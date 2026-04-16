@@ -1,0 +1,65 @@
+from typing import Any, Dict, List, Optional
+from pydantic import BaseModel, Field
+
+
+class QuestionModel(BaseModel):
+    name: str
+    type: str
+    label: str
+
+
+class TemplateSummary(BaseModel):
+    vehicle_id: str
+    display_name: str
+
+
+class TemplateDetailResponse(BaseModel):
+    vehicle_id: str
+    display_name: str
+    base_type: str
+    possible_classes: List[str]
+    extra_questions: List[QuestionModel]
+
+
+class ProfileSummary(BaseModel):
+    profile_id: str
+    display_name: str
+
+
+class ProfileDetailResponse(BaseModel):
+    profile_id: str
+    display_name: str
+    template_id: str
+    default_width_m: float
+    default_height_m: float
+    default_length_m: float
+    allow_custom_dimensions: bool
+
+
+class CategoryResponse(BaseModel):
+    id: str
+    label: str
+
+
+class CategoryDetailResponse(BaseModel):
+    category_id: str
+    label: str
+    profiles: List[ProfileSummary]
+
+
+class ClassificationRequest(BaseModel):
+    profile_id: str = Field(..., description="Selected vehicle profile ID")
+    custom_dimensions: bool = False
+    answers: Dict[str, Any] = Field(default_factory=dict)
+
+
+class ClassificationResponse(BaseModel):
+    profile_id: str
+    display_name: Optional[str] = None
+    template_id: Optional[str] = None
+    status: str
+    classification: str
+    reason: str
+    used_dimensions: Dict[str, float] = Field(default_factory=dict)
+    missing_fields: List[str] = Field(default_factory=list)
+    warnings: List[str] = Field(default_factory=list)
