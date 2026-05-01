@@ -4,7 +4,7 @@ set -a
 source .env
 set +a
 
-DATA_DIR=$1
+DATA_DIR=$(realpath "$1")
 
 if [ -z "$DATA_DIR" ]; then
     echo "Usage: $0 <data_dir>"
@@ -17,7 +17,7 @@ import_osm() {
     docker run --rm \
         -v "$DATA_DIR:/data" \
         pgrouting/pgrouting-extra \
-        osm2pgrouting -f "/data/$DATA_DIR" \
+        osm2pgrouting -f "/data/$1" \
         --conf /usr/local/share/osm2pgrouting/mapconfig_for_cars.xml \
         --clean \
         --dbname "$DB_NAME" --username "$DB_USER" --password "$DB_PASSWORD" \
@@ -42,10 +42,9 @@ if [ -d "$DATA_DIR" ]; then
             fi
         elif [[ "$file" == *.osm ]]; then
             echo "Found OSM file: $file"
-            import_osm "$file"
+            import_osm "$(basename "$file")"
         fi
     done
 else
     echo "OSM data not found. Skipping import."
 fi
-
