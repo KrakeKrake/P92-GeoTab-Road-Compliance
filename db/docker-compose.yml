@@ -1,0 +1,35 @@
+services:
+  postgis:
+    image: pgrouting/pgrouting:18-3.6-4.0
+    container_name: ${DB_CONTAINER}
+    environment:
+      POSTGRES_DB: ${DB_NAME}
+      POSTGRES_USER: ${DB_USER}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+      POSTGRES_HOST_AUTH_METHOD: md5
+    command: postgres -c listen_addresses='*'
+    volumes:
+      - pgrouting_data:/var/lib/postgresql
+    ports:
+      - "${DB_PORT}:5432"
+    networks:
+      - nhvr_compliance_default
+
+  adminer:
+    image: adminer
+    container_name: adminer
+    ports:
+      - "5433:8080"
+    restart: unless-stopped
+    depends_on:
+      - postgis
+    networks:
+      - nhvr_compliance_default
+
+volumes:
+  pgrouting_data:
+
+networks:
+  nhvr_compliance_default:
+    driver: bridge
+    name: nhvr_compliance_default
