@@ -2,30 +2,43 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <title>P1 Vehicle Classifier</title>
+  <title>P1 HVNL Vehicle Classifier</title>
   <style>
     body { font-family: Arial, sans-serif; max-width: 900px; margin: 30px auto; line-height: 1.4; }
     .box { border: 1px solid #ccc; padding: 16px; margin-bottom: 16px; border-radius: 8px; }
     label { display: block; margin-top: 10px; }
-    select, input, button, textarea { width: 100%; padding: 8px; margin-top: 4px; }
+    select, input, button { width: 100%; padding: 8px; margin-top: 4px; }
     button { cursor: pointer; }
     pre { background: #f6f6f6; padding: 12px; overflow: auto; }
+    #resetBtn { margin-bottom: 16px; }
+    small {
+      display: block;
+      margin-top: 4px;
+      color: #555;
+      font-size: 0.9em;
+    }
   </style>
 </head>
 <body>
-  <h1>P1 Vehicle Classifier</h1>
+  <h1>P1 HVNL Vehicle Classifier</h1>
+  <button id="resetBtn">Reset Session</button>
 
   <div class="box">
-    <h2>1. Category</h2>
-    <select id="categorySelect">
-      <option value="">Loading categories...</option>
+    <h2>1. Licence Class</h2>
+    <select id="licenceSelect">
+      <option value="">Select licence class</option>
+      <option value="LR">LR - Light Rigid</option>
+      <option value="MR">MR - Medium Rigid</option>
+      <option value="HR">HR - Heavy Rigid</option>
+      <option value="HC">HC - Heavy Combination</option>
+      <option value="MC">MC - Multi Combination</option>
     </select>
   </div>
 
   <div class="box">
-    <h2>2. Profile</h2>
+    <h2>2. Eligible Vehicle Profile</h2>
     <select id="profileSelect" disabled>
-      <option value="">Choose a category first</option>
+      <option value="">Choose a licence class first</option>
     </select>
   </div>
 
@@ -35,7 +48,34 @@
   </div>
 
   <div class="box">
-    <h2>4. Classification Input</h2>
+    <h2>4. Axle Configuration</h2>
+    <select id="axleConfigSelect" disabled>
+      <option value="">Choose a vehicle profile first</option>
+    </select>
+    <pre id="axleConfigDetails">No axle configuration selected.</pre>
+  </div>
+
+  <div class="box">
+    <h2>5. Mass Validation Input</h2>
+
+    <label>
+      Mass scheme
+      <select id="massScheme">
+        <option value="">Select mass scheme</option>
+        <option value="GML">GML</option>
+        <option value="CML">CML</option>
+        <option value="HML">HML</option>
+      </select>
+    </label>
+
+    <label>
+      Current total operating mass / combination mass (tonnes)
+      <input id="operatingMass" type="number" step="0.1" min="0" />
+    </label>
+  </div>
+
+  <div class="box">
+    <h2>6. Classification Input</h2>
 
     <label>
       Use custom dimensions?
@@ -45,94 +85,257 @@
       </select>
     </label>
 
-    <div id="dimensionFields" style="display:none;">
-      <label>Overall width (m)
-        <input id="overall_width_m" type="number" step="0.1" />
-      </label>
-      <label>Overall height (m)
-        <input id="overall_height_m" type="number" step="0.1" />
-      </label>
-      <label>Overall length (m)
-        <input id="overall_length_m" type="number" step="0.1" />
-      </label>
-    </div>
+  <div id="dimensionFields" style="display:none;">
+    <label>Overall width (m)
+      <input id="overall_width_m" type="number" step="0.1" />
+      <small id="widthHelp">Select a vehicle profile to view NHVR dimension limits.</small>
+    </label>
+
+    <label>Overall height (m)
+      <input id="overall_height_m" type="number" step="0.1" />
+      <small id="heightHelp">Select a vehicle profile to view NHVR dimension limits.</small>
+    </label>
+
+    <label>Overall length (m)
+      <input id="overall_length_m" type="number" step="0.1" />
+      <small id="lengthHelp">Select a vehicle profile to view NHVR dimension limits.</small>
+    </label>
+  </div>
 
     <div id="extraFields"></div>
 
-    <button id="classifyBtn">Classify</button>
+    <button id="classifyBtn">Classify + Validate Mass</button>
   </div>
 
   <div class="box">
-    <h2>5. Result</h2>
+    <h2>7. Result</h2>
     <pre id="resultBox">No result yet.</pre>
   </div>
 
   <script>
     const API_BASE = "http://127.0.0.1:8000";
+    const LICENCE_STORAGE_KEY = "p1_selected_licence_class";
 
-    const categorySelect = document.getElementById("categorySelect");
+    const licenceSelect = document.getElementById("licenceSelect");
     const profileSelect = document.getElementById("profileSelect");
     const profileDetails = document.getElementById("profileDetails");
+    const axleConfigSelect = document.getElementById("axleConfigSelect");
+    const axleConfigDetails = document.getElementById("axleConfigDetails");
+    const massScheme = document.getElementById("massScheme");
+    const operatingMass = document.getElementById("operatingMass");
     const customDimensions = document.getElementById("customDimensions");
     const dimensionFields = document.getElementById("dimensionFields");
     const extraFields = document.getElementById("extraFields");
     const resultBox = document.getElementById("resultBox");
+    const widthInput = document.getElementById("overall_width_m");
+    const heightInput = document.getElementById("overall_height_m");
+    const lengthInput = document.getElementById("overall_length_m");
+
+    const widthHelp = document.getElementById("widthHelp");
+    const heightHelp = document.getElementById("heightHelp");
+    const lengthHelp = document.getElementById("lengthHelp");
+    const DIMENSION_RANGES = {
+      "RIGID_TRUCK": {
+        width: {
+          min: 2.0,
+          max: 3.0,
+          nhvrLimit: 2.5,
+          label: "NHVR general width limit"
+        },
+        height: {
+          min: 2.5,
+          max: 5.0,
+          nhvrLimit: 4.3,
+          label: "NHVR general height limit"
+        },
+        length: {
+          min: 5.0,
+          max: 15.0,
+          nhvrLimit: 12.5,
+          label: "NHVR rigid vehicle length limit"
+        }
+      },
+
+      "PM_SEMI": {
+        width: {
+          min: 2.0,
+          max: 3.0,
+          nhvrLimit: 2.5,
+          label: "NHVR general width limit"
+        },
+        height: {
+          min: 2.5,
+          max: 5.0,
+          nhvrLimit: 4.3,
+          label: "NHVR general height limit"
+        },
+        length: {
+          min: 10.0,
+          max: 25.0,
+          nhvrLimit: 19.0,
+          label: "NHVR combination length limit"
+        }
+      },
+
+      "B_DOUBLE": {
+        width: {
+          min: 2.0,
+          max: 3.0,
+          nhvrLimit: 2.5,
+          label: "NHVR general width limit"
+        },
+        height: {
+          min: 2.5,
+          max: 5.0,
+          nhvrLimit: 4.3,
+          label: "NHVR general height limit"
+        },
+        length: {
+          min: 15.0,
+          max: 30.0,
+          nhvrLimit: 25.0,
+          label: "NHVR B-double length limit; 26.0 m only applies under specific conditions"
+        }
+      }
+    };
+
     let currentProfile = null;
     let currentTemplate = null;
+    let currentAxleConfig = null;
+    let axleConfigs = [];
 
     customDimensions.addEventListener("change", () => {
       dimensionFields.style.display =
         customDimensions.value === "true" ? "block" : "none";
     });
 
-    async function loadCategories() {
-      const res = await fetch(`${API_BASE}/categories`);
-      const data = await res.json();
+    function resetProfileState() {
+      currentProfile = null;
+      currentTemplate = null;
+      currentAxleConfig = null;
+      axleConfigs = [];
 
-      categorySelect.innerHTML = `<option value="">Select a category</option>`;
-      for (const category of data) {
-        const option = document.createElement("option");
-        option.value = category.id;
-        option.textContent = category.label;
-        categorySelect.appendChild(option);
-      }
+      profileDetails.textContent = "No profile selected.";
+      axleConfigDetails.textContent = "No axle configuration selected.";
+      extraFields.innerHTML = "";
+      resultBox.textContent = "No result yet.";
+
+      axleConfigSelect.disabled = true;
+      axleConfigSelect.innerHTML = `<option value="">Choose a vehicle profile first</option>`;
+
+      massScheme.value = "";
+      operatingMass.value = "";
+      widthInput.value = "";
+      heightInput.value = "";
+      lengthInput.value = "";
+
+      widthHelp.textContent = "Select a vehicle profile to view NHVR dimension limits.";
+      heightHelp.textContent = "Select a vehicle profile to view NHVR dimension limits.";
+      lengthHelp.textContent = "Select a vehicle profile to view NHVR dimension limits.";
     }
 
-    async function loadProfiles(categoryId) {
-      const res = await fetch(`${API_BASE}/categories/${categoryId}`);
-      const data = await res.json();
+    function resetFullSession() {
+      sessionStorage.removeItem(LICENCE_STORAGE_KEY);
 
-      profileSelect.disabled = false;
-      profileSelect.innerHTML = `<option value="">Select a profile</option>`;
+      licenceSelect.value = "";
+      profileSelect.innerHTML = `<option value="">Choose a licence class first</option>`;
+      profileSelect.disabled = true;
 
-      for (const profile of data.profiles) {
-        const option = document.createElement("option");
-        option.value = profile.profile_id;
-        option.textContent = profile.display_name;
-        profileSelect.appendChild(option);
+      resetProfileState();
+    }
+
+    async function loadProfilesByLicence(licenceClass) {
+      resetProfileState();
+
+      if (!licenceClass) {
+        profileSelect.disabled = true;
+        profileSelect.innerHTML = `<option value="">Choose a licence class first</option>`;
+        return;
+      }
+
+      try {
+        const res = await fetch(`${API_BASE}/profiles-by-licence/${licenceClass}`);
+        const data = await res.json();
+
+        profileSelect.disabled = false;
+        profileSelect.innerHTML = `<option value="">Select an eligible profile</option>`;
+
+        if (!Array.isArray(data) || data.length === 0) {
+          profileSelect.disabled = true;
+          profileSelect.innerHTML = `<option value="">No eligible profiles found</option>`;
+          return;
+        }
+
+        for (const profile of data) {
+          const option = document.createElement("option");
+          option.value = profile.profile_id;
+          option.textContent = profile.display_name;
+          profileSelect.appendChild(option);
+        }
+      } catch (error) {
+        resultBox.textContent = `Failed to load profiles: ${error}`;
       }
     }
 
     async function loadProfileDetails(profileId) {
-      const profileRes = await fetch(`${API_BASE}/profiles/${profileId}`);
-      currentProfile = await profileRes.json();
+      try {
+        const profileRes = await fetch(`${API_BASE}/profiles/${profileId}`);
+        currentProfile = await profileRes.json();
 
-      const templateRes = await fetch(`${API_BASE}/templates/${currentProfile.template_id}`);
-      currentTemplate = await templateRes.json();
+        const templateRes = await fetch(`${API_BASE}/templates/${currentProfile.template_id}`);
+        currentTemplate = await templateRes.json();
 
-      profileDetails.textContent = JSON.stringify(
-        { profile: currentProfile, template: currentTemplate },
-        null,
-        2
-      );
+        profileDetails.textContent = JSON.stringify(
+          { profile: currentProfile, template: currentTemplate },
+          null,
+          2
+        );
 
-      renderExtraFields(currentTemplate.extra_questions || []);
+        renderExtraFields(currentTemplate.extra_questions || []);
+        updateDimensionRanges(currentProfile.template_id);
+        await loadAxleConfigs(currentProfile.template_id);
+      } catch (error) {
+        resultBox.textContent = `Failed to load profile details: ${error}`;
+      }
+    }
+
+    async function loadAxleConfigs(templateId) {
+      currentAxleConfig = null;
+      axleConfigs = [];
+      axleConfigDetails.textContent = "No axle configuration selected.";
+
+      try {
+        const res = await fetch(`${API_BASE}/axle-configs/${templateId}`);
+        const data = await res.json();
+
+        axleConfigs = data.axle_configurations || [];
+
+        axleConfigSelect.disabled = false;
+        axleConfigSelect.innerHTML = `<option value="">Select axle configuration</option>`;
+
+        if (axleConfigs.length === 0) {
+          axleConfigSelect.disabled = true;
+          axleConfigSelect.innerHTML = `<option value="">No axle configurations found</option>`;
+          return;
+        }
+
+        for (const config of axleConfigs) {
+          const option = document.createElement("option");
+          option.value = config.config_id;
+          option.textContent = config.display_name;
+          axleConfigSelect.appendChild(option);
+        }
+      } catch (error) {
+        resultBox.textContent = `Failed to load axle configurations: ${error}`;
+      }
     }
 
     function renderExtraFields(questions) {
       extraFields.innerHTML = "";
+
       for (const q of questions) {
         const wrapper = document.createElement("div");
+
         wrapper.innerHTML = `
           <label>${q.label}
             ${q.type === "bool"
@@ -145,6 +348,7 @@
             }
           </label>
         `;
+
         extraFields.appendChild(wrapper);
       }
     }
@@ -177,14 +381,10 @@
       return answers;
     }
 
-    async function classify() {
-      if (!currentProfile) {
-        resultBox.textContent = "Please select a profile first.";
-        return;
-      }
-
+    async function classifyVehicle() {
       const payload = {
         profile_id: currentProfile.profile_id,
+        axle_config_id: currentAxleConfig.config_id,
         custom_dimensions: customDimensions.value === "true",
         answers: readExtraAnswers()
       };
@@ -195,25 +395,151 @@
         body: JSON.stringify(payload)
       });
 
-      const data = await res.json();
-      resultBox.textContent = JSON.stringify(data, null, 2);
+      return await res.json();
     }
 
-    categorySelect.addEventListener("change", async (e) => {
-      const categoryId = e.target.value;
-      if (!categoryId) return;
-      await loadProfiles(categoryId);
+    async function validateMass() {
+      const payload = {
+        axle_config_id: currentAxleConfig.config_id,
+        mass_scheme: massScheme.value,
+        operating_mass_t: Number(operatingMass.value)
+      };
+
+      const res = await fetch(`${API_BASE}/validate-mass`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload)
+      });
+
+      return await res.json();
+    }
+
+    async function classifyAndValidate() {
+      if (!licenceSelect.value) {
+        resultBox.textContent = "Please select a licence class first.";
+        return;
+      }
+
+      if (!currentProfile) {
+        resultBox.textContent = "Please select an eligible vehicle profile first.";
+        return;
+      }
+
+      if (!currentAxleConfig) {
+        resultBox.textContent = "Please select an axle configuration first.";
+        return;
+      }
+
+      if (!massScheme.value) {
+        resultBox.textContent = "Please select a mass scheme.";
+        return;
+      }
+
+      if (operatingMass.value === "" || Number(operatingMass.value) <= 0) {
+        resultBox.textContent = "Please enter a valid operating mass in tonnes.";
+        return;
+      }
+
+      try {
+        const classificationResult = await classifyVehicle();
+        const massValidationResult = await validateMass();
+
+        resultBox.textContent = JSON.stringify(
+          {
+            selected_licence_class: licenceSelect.value,
+            selected_profile: currentProfile,
+            selected_axle_configuration: currentAxleConfig,
+            classification_result: classificationResult,
+            mass_validation_result: massValidationResult
+          },
+          null,
+          2
+        );
+      } catch (error) {
+        resultBox.textContent = `Failed to classify or validate mass: ${error}`;
+      }
+    }
+
+    async function restoreSavedLicenceClass() {
+      const savedLicence = sessionStorage.getItem(LICENCE_STORAGE_KEY);
+
+      if (!savedLicence) return;
+
+      licenceSelect.value = savedLicence;
+      await loadProfilesByLicence(savedLicence);
+    }
+
+    licenceSelect.addEventListener("change", async (e) => {
+      const selectedLicence = e.target.value;
+
+      if (selectedLicence) {
+        sessionStorage.setItem(LICENCE_STORAGE_KEY, selectedLicence);
+      } else {
+        sessionStorage.removeItem(LICENCE_STORAGE_KEY);
+      }
+
+      await loadProfilesByLicence(selectedLicence);
     });
 
     profileSelect.addEventListener("change", async (e) => {
       const profileId = e.target.value;
+
+      resetProfileState();
+
       if (!profileId) return;
+
       await loadProfileDetails(profileId);
     });
 
-    document.getElementById("classifyBtn").addEventListener("click", classify);
+    axleConfigSelect.addEventListener("change", (e) => {
+      const configId = e.target.value;
 
-    loadCategories();
+      currentAxleConfig = axleConfigs.find(c => c.config_id === configId) || null;
+
+      axleConfigDetails.textContent = currentAxleConfig
+        ? JSON.stringify(currentAxleConfig, null, 2)
+        : "No axle configuration selected.";
+    });
+
+    document.getElementById("resetBtn").addEventListener("click", resetFullSession);
+    document.getElementById("classifyBtn").addEventListener("click", classifyAndValidate);
+
+    restoreSavedLicenceClass();
+
+    function updateDimensionRanges(templateId) {
+      const ranges = DIMENSION_RANGES[templateId];
+
+      if (!ranges) {
+        widthHelp.textContent = "No NHVR dimension range available.";
+        heightHelp.textContent = "No NHVR dimension range available.";
+        lengthHelp.textContent = "No NHVR dimension range available.";
+        return;
+      }
+
+      widthInput.min = ranges.width.min;
+      widthInput.max = ranges.width.max;
+
+      heightInput.min = ranges.height.min;
+      heightInput.max = ranges.height.max;
+
+      lengthInput.min = ranges.length.min;
+      lengthInput.max = ranges.length.max;
+
+      widthHelp.textContent =
+        `Accepted input range: ${ranges.width.min}–${ranges.width.max} m. ` +
+        `${ranges.width.label}: ${ranges.width.nhvrLimit} m. ` +
+        `Values above ${ranges.width.nhvrLimit} m will be flagged.`;
+
+      heightHelp.textContent =
+        `Accepted input range: ${ranges.height.min}–${ranges.height.max} m. ` +
+        `${ranges.height.label}: ${ranges.height.nhvrLimit} m. ` +
+        `Values above ${ranges.height.nhvrLimit} m will be flagged.`;
+
+      lengthHelp.textContent =
+        `Accepted input range: ${ranges.length.min}–${ranges.length.max} m. ` +
+        `${ranges.length.label}: ${ranges.length.nhvrLimit} m. ` +
+        `Values above ${ranges.length.nhvrLimit} m will be flagged.`;
+    }
   </script>
 </body>
 </html>

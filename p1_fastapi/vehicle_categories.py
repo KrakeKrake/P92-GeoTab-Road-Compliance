@@ -1,30 +1,25 @@
 vehicle_categories = [
     {
-        "id": "general_freight",
-        "label": "General Freight Combinations",
+        "id": "rigid_trucks",
+        "label": "Rigid Trucks",
         "profile_ids": [
-            "STANDARD_RIGID_TRUCK",
-            "STANDARD_PM_SEMI",
-            "STANDARD_RIGID_DOG"
+            "STANDARD_LR_RIGID",
+            "STANDARD_MR_RIGID",
+            "STANDARD_HR_RIGID"
         ]
     },
     {
-        "id": "class_2_common",
-        "label": "Common Class 2 Combinations",
+        "id": "articulated_vehicles",
+        "label": "Prime Mover + Semitrailer",
         "profile_ids": [
-            "STANDARD_B_DOUBLE",
-            "STANDARD_ROAD_TRAIN",
-            "STANDARD_VEHICLE_CARRIER",
-            "STANDARD_LIVESTOCK_VEHICLE",
-            "STANDARD_PBS_VEHICLE"
+            "STANDARD_PM_SEMI"
         ]
     },
     {
-        "id": "special_or_osom",
-        "label": "Special Purpose / OSOM Paths",
+        "id": "multi_combination",
+        "label": "Multi-Combination Vehicles",
         "profile_ids": [
-            "STANDARD_SPV",
-            "STANDARD_OSOM_CANDIDATE"
+            "STANDARD_B_DOUBLE"
         ]
     }
 ]

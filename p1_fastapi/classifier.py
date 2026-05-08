@@ -3,20 +3,40 @@ from typing import Any, Dict, List
 from vehicle_profiles import vehicle_profiles
 from vehicle_templates import vehicle_templates
 
-
-# Common general limits used by the prototype
+from axle_configurations import axle_configurations
 GENERAL_WIDTH_LIMIT_M = 2.5
 GENERAL_HEIGHT_LIMIT_M = 4.3
 GENERAL_COMBINATION_LENGTH_LIMIT_M = 19.0
 GENERAL_RIGID_LENGTH_LIMIT_M = 12.5
 
-# Category-specific prototype limits
 B_DOUBLE_LENGTH_LIMIT_M = 25.0
-ROAD_TRAIN_LENGTH_LIMIT_M = 53.5
-VEHICLE_CARRIER_LENGTH_LIMIT_M = 25.0
-VEHICLE_CARRIER_HEIGHT_LIMIT_M = 4.6
-LIVESTOCK_HEIGHT_LIMIT_M = 4.6
 
+INPUT_SANITY_LIMITS = {
+    "RIGID_TRUCK": {
+        "min_width_m": 2.0,
+        "max_width_m": 3.0,
+        "min_height_m": 2.5,
+        "max_height_m": 5.0,
+        "min_length_m": 5.0,
+        "max_length_m": 15.0
+    },
+    "PM_SEMI": {
+        "min_width_m": 2.0,
+        "max_width_m": 3.0,
+        "min_height_m": 2.5,
+        "max_height_m": 5.0,
+        "min_length_m": 10.0,
+        "max_length_m": 25.0
+    },
+    "B_DOUBLE": {
+        "min_width_m": 2.0,
+        "max_width_m": 3.0,
+        "min_height_m": 2.5,
+        "max_height_m": 5.0,
+        "min_length_m": 15.0,
+        "max_length_m": 30.0
+    }
+}
 
 def get_profile(profile_id: str) -> Dict[str, Any] | None:
     return vehicle_profiles.get(profile_id)
@@ -42,8 +62,7 @@ def get_required_fields(profile_id: str, custom_dimensions: bool) -> List[str]:
     if not profile:
         return []
 
-    template_id = profile["template_id"]
-    template = get_template(template_id)
+    template = get_template(profile["template_id"])
     if not template:
         return []
 
@@ -64,17 +83,17 @@ def get_required_fields(profile_id: str, custom_dimensions: bool) -> List[str]:
 
 def get_missing_fields(profile_id: str, custom_dimensions: bool, answers: Dict[str, Any]) -> List[str]:
     required_fields = get_required_fields(profile_id, custom_dimensions)
-    missing = []
 
-    for field_name in required_fields:
-        if field_name not in answers or answers[field_name] is None:
-            missing.append(field_name)
-
-    return missing
+    return [
+        field_name
+        for field_name in required_fields
+        if field_name not in answers or answers[field_name] is None
+    ]
 
 
 def resolve_dimensions(profile_id: str, custom_dimensions: bool, answers: Dict[str, Any]) -> Dict[str, float]:
     profile = get_profile(profile_id)
+
     if not profile:
         return {
             "width_m": 0.0,
@@ -120,9 +139,58 @@ def evaluate_limits(
         "reasons": reasons
     }
 
+def validate_input_dimensions(template_id: str, dimensions: Dict[str, float]) -> List[str]:
+    limits = INPUT_SANITY_LIMITS.get(template_id)
 
-def classify_hvnl(profile_id: str, custom_dimensions: bool, answers: Dict[str, Any]) -> Dict[str, Any]:
+    if not limits:
+        return []
+
+    errors = []
+
+    if (
+        dimensions["width_m"] < limits["min_width_m"]
+        or dimensions["width_m"] > limits["max_width_m"]
+    ):
+        errors.append(
+            f"Width {dimensions['width_m']} m is outside realistic input range "
+            f"({limits['min_width_m']} m to {limits['max_width_m']} m)."
+        )
+
+    if (
+        dimensions["height_m"] < limits["min_height_m"]
+        or dimensions["height_m"] > limits["max_height_m"]
+    ):
+        errors.append(
+            f"Height {dimensions['height_m']} m is outside realistic input range "
+            f"({limits['min_height_m']} m to {limits['max_height_m']} m)."
+        )
+
+    if (
+        dimensions["length_m"] < limits["min_length_m"]
+        or dimensions["length_m"] > limits["max_length_m"]
+    ):
+        errors.append(
+            f"Length {dimensions['length_m']} m is outside realistic input range "
+            f"({limits['min_length_m']} m to {limits['max_length_m']} m)."
+        )
+
+    return errors
+    
+def find_axle_config(config_id: str | None):
+    if not config_id:
+        return None
+
+    for template_id, configs in axle_configurations.items():
+        for config in configs:
+            if config["config_id"] == config_id:
+                return config
+
+    return None
+
+
+def classify_hvnl(profile_id: str, axle_config_id: str | None, custom_dimensions: bool, answers: Dict[str, Any]) -> Dict[str, Any]:
     profile = get_profile(profile_id)
+
     if not profile:
         return {
             "status": "error",
@@ -133,6 +201,8 @@ def classify_hvnl(profile_id: str, custom_dimensions: bool, answers: Dict[str, A
 
     template_id = profile["template_id"]
     template = get_template(template_id)
+    selected_axle_config = find_axle_config(axle_config_id)
+
     if not template:
         return {
             "status": "error",
@@ -141,8 +211,18 @@ def classify_hvnl(profile_id: str, custom_dimensions: bool, answers: Dict[str, A
             "warnings": ["Template not found."]
         }
 
-    # Resolve dimensions early so we can still return them for incomplete cases
     dimensions = resolve_dimensions(profile_id, custom_dimensions, answers)
+    validation_errors = validate_input_dimensions(template_id, dimensions)
+
+    if validation_errors:
+        return {
+            "status": "error",
+            "classification": "invalid_input",
+            "reason": "Input dimensions are outside acceptable range.",
+            "used_dimensions": dimensions,
+            "missing_fields": [],
+            "warnings": validation_errors
+        }
 
     missing_fields = get_missing_fields(profile_id, custom_dimensions, answers)
     if missing_fields:
@@ -158,89 +238,72 @@ def classify_hvnl(profile_id: str, custom_dimensions: bool, answers: Dict[str, A
     width_m = dimensions["width_m"]
     height_m = dimensions["height_m"]
     length_m = dimensions["length_m"]
+    selected_length_limit_m = (
+    selected_axle_config["max_length_m"]
+    if selected_axle_config and "max_length_m" in selected_axle_config
+    else None
+    )
 
     warnings: List[str] = []
 
-    # -------------------------
-    # CLASS 1 FIRST
-    # -------------------------
-
-    # Special Purpose Vehicle:
-    # If it exceeds prescribed requirements, it may follow Class 1.
-    if template_id == "SPV":
+    if template_id == "RIGID_TRUCK":
         limit_check = evaluate_limits(
             width_m=width_m,
             height_m=height_m,
             length_m=length_m,
             width_limit_m=GENERAL_WIDTH_LIMIT_M,
             height_limit_m=GENERAL_HEIGHT_LIMIT_M,
-            length_limit_m=GENERAL_RIGID_LENGTH_LIMIT_M
+            length_limit_m=selected_length_limit_m or GENERAL_RIGID_LENGTH_LIMIT_M
         )
-
-        if limit_check["exceeds"]:
-            return {
-                "status": "ok",
-                "classification": "class_1",
-                "reason": "A special purpose vehicle exceeding prescribed requirements may follow the Class 1 path.",
-                "used_dimensions": dimensions,
-                "warnings": limit_check["reasons"]
-            }
-
-        return {
-            "status": "ok",
-            "classification": "general_access_candidate",
-            "reason": "A special purpose vehicle within common general limits may be general access.",
-            "used_dimensions": dimensions,
-            "warnings": warnings
-        }
-
-    # OSOM candidate:
-    # If it exceeds prescribed requirements and is carrying a large indivisible item,
-    # and is not a B-double or road train, it may follow Class 1.
-    if template_id == "OSOM_CANDIDATE":
-        large_indivisible_item = _safe_bool(answers.get("large_indivisible_item"))
-        is_b_double_or_road_train = _safe_bool(answers.get("is_b_double_or_road_train"))
-
-        limit_check = evaluate_limits(
-            width_m=width_m,
-            height_m=height_m,
-            length_m=length_m,
-            width_limit_m=GENERAL_WIDTH_LIMIT_M,
-            height_limit_m=GENERAL_HEIGHT_LIMIT_M,
-            length_limit_m=GENERAL_COMBINATION_LENGTH_LIMIT_M
-        )
-
-        if limit_check["exceeds"] and large_indivisible_item and not is_b_double_or_road_train:
-            return {
-                "status": "ok",
-                "classification": "class_1",
-                "reason": "The vehicle exceeds prescribed requirements and may follow the Class 1 OSOM path.",
-                "used_dimensions": dimensions,
-                "warnings": limit_check["reasons"]
-            }
 
         if limit_check["exceeds"]:
             return {
                 "status": "ok",
                 "classification": "class_3",
-                "reason": "The vehicle exceeds prescribed requirements but does not meet the current Class 1 path conditions.",
+                "reason": "The rigid truck exceeds common general prescribed limits and does not fall under the current Class 1 or Class 2 paths.",
                 "used_dimensions": dimensions,
+                "missing_fields": [],
                 "warnings": limit_check["reasons"]
             }
 
         return {
             "status": "ok",
-            "classification": "general_access_candidate",
-            "reason": "The vehicle is within common general limits.",
+            "classification": "general_access",
+            "reason": "The rigid truck is within common general limits.",
             "used_dimensions": dimensions,
+            "missing_fields": [],
             "warnings": warnings
         }
 
-    # -------------------------
-    # CLASS 2 NEXT
-    # -------------------------
+    if template_id == "PM_SEMI":
+        limit_check = evaluate_limits(
+            width_m=width_m,
+            height_m=height_m,
+            length_m=length_m,
+            width_limit_m=GENERAL_WIDTH_LIMIT_M,
+            height_limit_m=GENERAL_HEIGHT_LIMIT_M,
+            length_limit_m=selected_length_limit_m or GENERAL_COMBINATION_LENGTH_LIMIT_M
+        )
 
-    # B-double: Class 2 if it complies with the prescribed limits applying to it.
+        if limit_check["exceeds"]:
+            return {
+                "status": "ok",
+                "classification": "class_3",
+                "reason": "The prime mover and semitrailer combination exceeds common general prescribed limits and does not fall under the current Class 1 or Class 2 paths.",
+                "used_dimensions": dimensions,
+                "missing_fields": [],
+                "warnings": limit_check["reasons"]
+            }
+
+        return {
+            "status": "ok",
+            "classification": "general_access",
+            "reason": "The prime mover and semitrailer combination is within common general limits.",
+            "used_dimensions": dimensions,
+            "missing_fields": [],
+            "warnings": warnings
+        }
+
     if template_id == "B_DOUBLE":
         pbs_vehicle = _safe_bool(answers.get("pbs_vehicle"))
         if pbs_vehicle:
@@ -252,229 +315,25 @@ def classify_hvnl(profile_id: str, custom_dimensions: bool, answers: Dict[str, A
             length_m=length_m,
             width_limit_m=GENERAL_WIDTH_LIMIT_M,
             height_limit_m=GENERAL_HEIGHT_LIMIT_M,
-            length_limit_m=B_DOUBLE_LENGTH_LIMIT_M
+            length_limit_m=selected_length_limit_m or B_DOUBLE_LENGTH_LIMIT_M
         )
 
         if limit_check["exceeds"]:
             return {
                 "status": "ok",
                 "classification": "class_3",
-                "reason": "The B-double exceeds the prototype prescribed limits applying to this Class 2 category, so it falls to the Class 3 path.",
+                "reason": "The B-double exceeds the prototype limits applied to this Class 2 category. Under the current prototype logic, it is flagged as Class 3 for further compliance review.",
                 "used_dimensions": dimensions,
+                "missing_fields": [],
                 "warnings": limit_check["reasons"] + warnings
             }
 
         return {
             "status": "ok",
             "classification": "class_2",
-            "reason": "The B-double fits the prototype prescribed limits for its Class 2 category.",
+            "reason": "The B-double follows the Class 2 path under the current prototype rules.",
             "used_dimensions": dimensions,
-            "warnings": warnings
-        }
-
-    # Road train: Class 2 if it complies with the prescribed limits applying to it.
-    if template_id == "ROAD_TRAIN":
-        pbs_vehicle = _safe_bool(answers.get("pbs_vehicle"))
-        if pbs_vehicle:
-            warnings.append("PBS flag noted. Detailed PBS handling is not implemented yet.")
-
-        limit_check = evaluate_limits(
-            width_m=width_m,
-            height_m=height_m,
-            length_m=length_m,
-            width_limit_m=GENERAL_WIDTH_LIMIT_M,
-            height_limit_m=GENERAL_HEIGHT_LIMIT_M,
-            length_limit_m=ROAD_TRAIN_LENGTH_LIMIT_M
-        )
-
-        if limit_check["exceeds"]:
-            return {
-                "status": "ok",
-                "classification": "class_3",
-                "reason": "The road train exceeds the prototype prescribed limits applying to this Class 2 category, so it falls to the Class 3 path.",
-                "used_dimensions": dimensions,
-                "warnings": limit_check["reasons"] + warnings
-            }
-
-        return {
-            "status": "ok",
-            "classification": "class_2",
-            "reason": "The road train fits the prototype prescribed limits for its Class 2 category.",
-            "used_dimensions": dimensions,
-            "warnings": warnings
-        }
-
-    # PBS vehicle: keep simple for now.
-    if template_id == "PBS_VEHICLE":
-        return {
-            "status": "ok",
-            "classification": "class_2",
-            "reason": "PBS vehicle follows the Class 2 path.",
-            "used_dimensions": dimensions,
-            "warnings": warnings
-        }
-
-    # Vehicle carrier:
-    # Class 2 if >19m or >4.3m and still within its prototype prescribed carrier limits.
-    if template_id == "VEHICLE_CARRIER":
-        carrier_limit_check = evaluate_limits(
-            width_m=width_m,
-            height_m=height_m,
-            length_m=length_m,
-            width_limit_m=GENERAL_WIDTH_LIMIT_M,
-            height_limit_m=VEHICLE_CARRIER_HEIGHT_LIMIT_M,
-            length_limit_m=VEHICLE_CARRIER_LENGTH_LIMIT_M
-        )
-
-        if carrier_limit_check["exceeds"]:
-            return {
-                "status": "ok",
-                "classification": "class_3",
-                "reason": "The vehicle carrier exceeds the prototype prescribed limits applying to this Class 2 category, so it falls to the Class 3 path.",
-                "used_dimensions": dimensions,
-                "warnings": carrier_limit_check["reasons"]
-            }
-
-        if length_m > 19.0 or height_m > 4.3:
-            return {
-                "status": "ok",
-                "classification": "class_2",
-                "reason": "The vehicle carrier is over 19 m or over 4.3 m and fits the prototype Class 2 carrier limits.",
-                "used_dimensions": dimensions,
-                "warnings": warnings
-            }
-
-        return {
-            "status": "ok",
-            "classification": "general_access_candidate",
-            "reason": "The vehicle carrier is within common general limits.",
-            "used_dimensions": dimensions,
-            "warnings": warnings
-        }
-
-    # Livestock vehicle:
-    # Class 2 if >4.3m and still within prototype livestock height limit.
-    if template_id == "LIVESTOCK_VEHICLE":
-        livestock_limit_check = evaluate_limits(
-            width_m=width_m,
-            height_m=height_m,
-            length_m=length_m,
-            width_limit_m=GENERAL_WIDTH_LIMIT_M,
-            height_limit_m=LIVESTOCK_HEIGHT_LIMIT_M,
-            length_limit_m=GENERAL_COMBINATION_LENGTH_LIMIT_M
-        )
-
-        if livestock_limit_check["exceeds"]:
-            return {
-                "status": "ok",
-                "classification": "class_3",
-                "reason": "The livestock vehicle exceeds the prototype prescribed limits applying to this Class 2 category, so it falls to the Class 3 path.",
-                "used_dimensions": dimensions,
-                "warnings": livestock_limit_check["reasons"]
-            }
-
-        if height_m > 4.3:
-            return {
-                "status": "ok",
-                "classification": "class_2",
-                "reason": "The livestock vehicle is over 4.3 m high and fits the prototype Class 2 livestock limits.",
-                "used_dimensions": dimensions,
-                "warnings": warnings
-            }
-
-        return {
-            "status": "ok",
-            "classification": "general_access_candidate",
-            "reason": "The livestock vehicle is within common general limits.",
-            "used_dimensions": dimensions,
-            "warnings": warnings
-        }
-
-    # -------------------------
-    # CLASS 3 FALLBACK / GENERAL ACCESS
-    # -------------------------
-
-    # Rigid truck
-    if template_id == "RIGID_TRUCK":
-        limit_check = evaluate_limits(
-            width_m=width_m,
-            height_m=height_m,
-            length_m=length_m,
-            width_limit_m=GENERAL_WIDTH_LIMIT_M,
-            height_limit_m=GENERAL_HEIGHT_LIMIT_M,
-            length_limit_m=GENERAL_RIGID_LENGTH_LIMIT_M
-        )
-
-        if limit_check["exceeds"]:
-            return {
-                "status": "ok",
-                "classification": "class_3",
-                "reason": "The rigid truck exceeds common general prescribed limits and is not on a Class 1 or Class 2 path.",
-                "used_dimensions": dimensions,
-                "warnings": limit_check["reasons"]
-            }
-
-        return {
-            "status": "ok",
-            "classification": "general_access_candidate",
-            "reason": "The rigid truck is within common general limits.",
-            "used_dimensions": dimensions,
-            "warnings": warnings
-        }
-
-    # Prime mover + semitrailer
-    if template_id == "PM_SEMI":
-        limit_check = evaluate_limits(
-            width_m=width_m,
-            height_m=height_m,
-            length_m=length_m,
-            width_limit_m=GENERAL_WIDTH_LIMIT_M,
-            height_limit_m=GENERAL_HEIGHT_LIMIT_M,
-            length_limit_m=GENERAL_COMBINATION_LENGTH_LIMIT_M
-        )
-
-        if limit_check["exceeds"]:
-            return {
-                "status": "ok",
-                "classification": "class_3",
-                "reason": "The prime mover and semitrailer combination exceeds common general prescribed limits and is not on a Class 1 or Class 2 path.",
-                "used_dimensions": dimensions,
-                "warnings": limit_check["reasons"]
-            }
-
-        return {
-            "status": "ok",
-            "classification": "general_access_candidate",
-            "reason": "The prime mover and semitrailer combination is within common general limits.",
-            "used_dimensions": dimensions,
-            "warnings": warnings
-        }
-
-    # Rigid truck + dog trailer
-    if template_id == "RIGID_DOG":
-        limit_check = evaluate_limits(
-            width_m=width_m,
-            height_m=height_m,
-            length_m=length_m,
-            width_limit_m=GENERAL_WIDTH_LIMIT_M,
-            height_limit_m=GENERAL_HEIGHT_LIMIT_M,
-            length_limit_m=GENERAL_COMBINATION_LENGTH_LIMIT_M
-        )
-
-        if limit_check["exceeds"]:
-            return {
-                "status": "ok",
-                "classification": "class_3",
-                "reason": "The rigid truck and dog trailer combination exceeds common general prescribed limits and is not on a Class 1 or Class 2 path.",
-                "used_dimensions": dimensions,
-                "warnings": limit_check["reasons"]
-            }
-
-        return {
-            "status": "ok",
-            "classification": "general_access_candidate",
-            "reason": "The rigid truck and dog trailer combination is within common general limits.",
-            "used_dimensions": dimensions,
+            "missing_fields": [],
             "warnings": warnings
         }
 
@@ -482,5 +341,7 @@ def classify_hvnl(profile_id: str, custom_dimensions: bool, answers: Dict[str, A
         "status": "error",
         "classification": "unknown",
         "reason": "No classification rule matched this vehicle template.",
+        "used_dimensions": dimensions,
+        "missing_fields": [],
         "warnings": ["Rule coverage is incomplete for this vehicle type."]
     }

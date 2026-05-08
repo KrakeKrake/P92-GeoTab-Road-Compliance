@@ -10,15 +10,19 @@ from models import (
     ProfileDetailResponse,
     ProfileSummary,
     TemplateDetailResponse,
-    TemplateSummary,
 )
+
 from vehicle_categories import vehicle_categories
 from vehicle_profiles import vehicle_profiles
+from licence_rules import get_profiles_by_licence
+from axle_configurations import axle_configurations
+from mass_validator import validate_mass
+from pydantic import BaseModel
 
 app = FastAPI(
     title="P1 HVNL Vehicle Classifier",
     description="NHVR class path classification.",
-    version="0.1.0"
+    version="0.2.0"
 )
 app.add_middleware(
     CORSMiddleware,
@@ -92,6 +96,12 @@ def get_profile_detail(profile_id: str):
         profile_id=profile["profile_id"],
         display_name=profile["display_name"],
         template_id=profile["template_id"],
+        vehicle_family=profile["vehicle_family"],
+        combination_type=profile["combination_type"],
+        gvm_category=profile.get("gvm_category"),
+        axle_count=profile.get("axle_count"),
+        axle_configurable=profile.get("axle_configurable", False),
+        possible_axle_configs=profile.get("possible_axle_configs", []),
         default_width_m=profile["default_width_m"],
         default_height_m=profile["default_height_m"],
         default_length_m=profile["default_length_m"],
@@ -108,7 +118,6 @@ def get_template_detail(template_id: str):
         vehicle_id=template_id,
         display_name=template["display_name"],
         base_type=template["base_type"],
-        possible_classes=template["possible_classes"],
         extra_questions=template["extra_questions"]
     )
 
@@ -120,9 +129,10 @@ def classify_vehicle(request: ClassificationRequest):
         raise HTTPException(status_code=404, detail="Vehicle profile not found.")
 
     result = classify_hvnl(
-        profile_id=request.profile_id,
-        custom_dimensions=request.custom_dimensions,
-        answers=request.answers
+    profile_id=request.profile_id,
+    axle_config_id=request.axle_config_id,
+    custom_dimensions=request.custom_dimensions,
+    answers=request.answers
     )
 
     return ClassificationResponse(
@@ -135,4 +145,44 @@ def classify_vehicle(request: ClassificationRequest):
         used_dimensions=result.get("used_dimensions", {}),
         missing_fields=result.get("missing_fields", []),
         warnings=result.get("warnings", [])
+    )
+
+@app.get("/profiles-by-licence/{licence_class}", response_model=list[ProfileSummary])
+def profiles_by_licence(licence_class: str):
+    profiles = get_profiles_by_licence(licence_class)
+
+    return [
+        ProfileSummary(
+            profile_id=profile["profile_id"],
+            display_name=profile["display_name"]
+        )
+        for profile in profiles
+    ]
+
+@app.get("/axle-configs/{template_id}")
+def get_axle_configs(template_id: str):
+    configs = axle_configurations.get(template_id)
+
+    if configs is None:
+        raise HTTPException(
+            status_code=404,
+            detail="No axle configurations found for this template."
+        )
+
+    return {
+        "template_id": template_id,
+        "axle_configurations": configs
+    }
+
+class MassValidationRequest(BaseModel):
+    axle_config_id: str
+    mass_scheme: str
+    operating_mass_t: float
+    
+@app.post("/validate-mass")
+def validate_vehicle_mass(request: MassValidationRequest):
+    return validate_mass(
+        config_id=request.axle_config_id,
+        mass_scheme=request.mass_scheme,
+        operating_mass_t=request.operating_mass_t
     )

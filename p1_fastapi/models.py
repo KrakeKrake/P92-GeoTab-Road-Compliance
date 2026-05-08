@@ -17,23 +17,12 @@ class TemplateDetailResponse(BaseModel):
     vehicle_id: str
     display_name: str
     base_type: str
-    possible_classes: List[str]
     extra_questions: List[QuestionModel]
 
 
 class ProfileSummary(BaseModel):
     profile_id: str
     display_name: str
-
-
-class ProfileDetailResponse(BaseModel):
-    profile_id: str
-    display_name: str
-    template_id: str
-    default_width_m: float
-    default_height_m: float
-    default_length_m: float
-    allow_custom_dimensions: bool
 
 
 class CategoryResponse(BaseModel):
@@ -49,6 +38,7 @@ class CategoryDetailResponse(BaseModel):
 
 class ClassificationRequest(BaseModel):
     profile_id: str = Field(..., description="Selected vehicle profile ID")
+    axle_config_id: Optional[str] = None
     custom_dimensions: bool = False
     answers: Dict[str, Any] = Field(default_factory=dict)
 
@@ -63,3 +53,20 @@ class ClassificationResponse(BaseModel):
     used_dimensions: Dict[str, float] = Field(default_factory=dict)
     missing_fields: List[str] = Field(default_factory=list)
     warnings: List[str] = Field(default_factory=list)
+
+class ProfileDetailResponse(BaseModel):
+    profile_id: str
+    display_name: str
+    template_id: str
+
+    vehicle_family: str
+    combination_type: str
+    gvm_category: Optional[str] = None
+    axle_count: Optional[int] = None
+    axle_configurable: bool = False
+    possible_axle_configs: List[str] = Field(default_factory=list)
+
+    default_width_m: float
+    default_height_m: float
+    default_length_m: float
+    allow_custom_dimensions: bool
