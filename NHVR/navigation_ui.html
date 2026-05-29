@@ -1,0 +1,689 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>HeavyRoute — NHVR Compliance Navigation</title>
+<link href="https://unpkg.com/maplibre-gl@4.5.0/dist/maplibre-gl.css" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Syne:wght@700;800&family=DM+Sans:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="navigation.css">
+</head>
+<body>
+
+<!-- TOP BAR -->
+<div class="topbar">
+  <div class="logo">
+    HeavyRoute
+  </div>
+  <div class="topbar-sep"></div>
+  <div class="status-pill">
+    <div class="status-dot"></div>
+    NHVR Compliance System
+  </div>
+  <div class="topbar-right">
+    <div class="user-chip">
+      <div class="user-avatar" id="userInitials">?</div>
+      <span id="userLabel">Not signed in</span>
+    </div>
+  </div>
+</div>
+
+<!-- MAIN -->
+<div class="main">
+
+  <!-- MAP -->
+  <div class="map-area">
+    <div id="map"></div>
+    <!-- Map empty state — shown until a route is loaded -->
+    <div class="map-empty" id="mapEmpty">
+      <div class="map-empty-icon">🗺️</div>
+      <div class="map-empty-text">Enter origin and destination to plan a route</div>
+    </div>
+    <div class="map-attr">© <a href="https://www.openstreetmap.org/copyright" style="color:inherit">OpenStreetMap</a> contributors</div>
+  </div>
+
+  <!-- SIDE PANEL -->
+  <div class="panel">
+    <div class="tabs">
+      <div class="tab active" onclick="switchTab('route',this)">Route</div>
+      <div class="tab" onclick="switchTab('vehicle',this)">Vehicle</div>
+      <div class="tab" onclick="switchTab('compliance',this)">Compliance</div>
+      <div class="tab" onclick="switchTab('profile',this)">Profile</div>
+    </div>
+
+    <div class="panel-body">
+
+      <!-- ── ROUTE TAB ── -->
+      <div class="tab-content active" id="tab-route">
+
+        <div class="steps">
+          <div class="step active" id="step1"><span class="step-num">1</span>Route</div>
+          <div class="step" id="step2"><span class="step-num">2</span>Vehicle</div>
+          <div class="step" id="step3"><span class="step-num">3</span>Check</div>
+        </div>
+
+        <div class="section-label">Origin &amp; Destination</div>
+        <div class="route-inputs">
+          <div class="search-box">
+            <span class="search-icon">
+              <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+                <circle cx="6" cy="6" r="4" stroke="currentColor" stroke-width="1.5"/>
+                <circle cx="6" cy="6" r="1.5" fill="currentColor"/>
+              </svg>
+            </span>
+            <input class="search-input" id="originInput" placeholder="Enter origin address">
+          </div>
+          <div class="search-box">
+            <span class="search-icon">
+              <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+                <path d="M7 12V2M4 5l3-3 3 3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+              </svg>
+            </span>
+            <input class="search-input" id="destInput" placeholder="Enter destination">
+          </div>
+          <div class="swap-btn" onclick="swapInputs()" title="Swap">⇅</div>
+        </div>
+
+        <button class="cta" onclick="planRoute()" id="planBtn">
+          <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+            <path d="M2 7h10M8 3l4 4-4 4" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+          Plan Route
+        </button>
+
+        <!-- Route summary — hidden until route is returned from backend -->
+        <div id="routeSummary" style="display:none">
+          <div class="divider"></div>
+          <div class="section-label">Route Summary</div>
+          <div class="stats-row">
+            <div class="stat-card">
+              <div class="stat-value" id="routeDistance">—</div>
+              <div class="stat-label">km</div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-value" id="routeTime">—</div>
+              <div class="stat-label">Est. time</div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-value" id="routeViolations">—</div>
+              <div class="stat-label">Violations</div>
+            </div>
+          </div>
+
+          <!-- Compliance result — populated by compliance API response -->
+          <div id="routeComplianceResult"></div>
+
+          <!-- Violations list — populated by compliance API response -->
+          <div id="violationsList"></div>
+
+          <button class="cta secondary" onclick="switchTab('compliance', document.querySelectorAll('.tab')[2])" style="margin-top:4px">
+            View Full Compliance Report
+          </button>
+        </div>
+
+        <!-- Placeholder shown before a route exists -->
+        <div id="routePlaceholder">
+          <div class="divider"></div>
+          <div class="empty-state">
+            <div class="empty-state-icon">📍</div>
+            <div class="empty-state-title">No route planned</div>
+            <div class="empty-state-sub">Enter your origin and destination above.<br>Make sure your vehicle profile is set before checking compliance.</div>
+          </div>
+        </div>
+
+      </div>
+
+      <!-- ── VEHICLE TAB ── -->
+      <div class="tab-content" id="tab-vehicle">
+
+        <div class="section-label">Licence Class</div>
+        <div class="select-row">
+          <div class="sel-wrap">
+            <select class="sel" id="licSel" onchange="onLicChange()">
+              <option value="">— Select licence class —</option>
+              <option value="MC">MC — Multi Combination</option>
+              <option value="HC">HC — Heavy Combination</option>
+              <option value="HR">HR — Heavy Rigid</option>
+              <option value="MR">MR — Medium Rigid</option>
+              <option value="LR">LR — Light Rigid</option>
+            </select>
+            <span class="sel-arrow">▾</span>
+          </div>
+        </div>
+
+        <div id="classRow" style="display:none">
+          <div class="section-label">Vehicle Class</div>
+          <div class="select-row">
+            <div class="sel-wrap">
+              <select class="sel" id="classSel" onchange="onClassChange()">
+                <option value="2">Class 2</option>
+                <option value="3">Class 3</option>
+              </select>
+              <span class="sel-arrow">▾</span>
+            </div>
+          </div>
+        </div>
+
+        <div id="typeSection" style="display:none">
+          <div class="section-label">Vehicle Type</div>
+          <div class="select-row">
+            <div class="sel-wrap">
+              <select class="sel" id="typeSel" onchange="onTypeChange()">
+                <option value="">— Select vehicle type —</option>
+              </select>
+              <span class="sel-arrow">▾</span>
+            </div>
+          </div>
+        </div>
+
+        <div id="configSection" style="display:none">
+          <div class="section-label">Axle Configuration</div>
+          <div class="select-row">
+            <div class="sel-wrap">
+              <select class="sel" id="configSel" onchange="onConfigChange()"></select>
+              <span class="sel-arrow">▾</span>
+            </div>
+          </div>
+        </div>
+
+        <div id="detailSection" style="display:none">
+          <div class="section-label">Configuration Details</div>
+          <div id="configInfo" class="info-box"></div>
+
+          <div class="section-label">Mass Scheme &amp; Payload</div>
+          <div class="select-row">
+            <div class="sel-wrap">
+              <div class="sel-label">Mass Scheme</div>
+              <select class="sel" id="schemeSel" onchange="runCheck()">
+                <option value="gml">GML — General Mass Limits</option>
+                <option value="cml">CML — Concessional</option>
+                <option value="hml">HML — Higher Mass Limits</option>
+              </select>
+              <span class="sel-arrow">▾</span>
+            </div>
+          </div>
+
+          <div class="input-row">
+            <div class="input-wrap">
+              <div class="input-label">Tare Weight</div>
+              <input class="input-field" id="tareInput" type="number" min="0" step="100" oninput="onTareChange()">
+              <div class="input-unit" id="tareNote">kg — from database</div>
+            </div>
+            <div class="input-wrap">
+              <div class="input-label">Payload</div>
+              <input class="input-field" id="payloadInput" type="number" min="0" step="100" placeholder="0" oninput="runCheck()">
+              <div class="input-unit">kg</div>
+            </div>
+          </div>
+
+          <!-- Mass check result -->
+          <div id="checkResult" style="display:none"></div>
+
+          <div class="section-label">Axle Groups</div>
+          <table class="mass-table" id="axleGroupTable">
+            <tr><th>Axle Group</th><th>Limit (kg)</th></tr>
+          </table>
+
+          <button class="cta" onclick="applyVehicle()">
+            Apply Vehicle &amp; Check Route
+          </button>
+        </div>
+
+        <!-- Shown before licence is selected -->
+        <div id="vehiclePlaceholder">
+          <div class="empty-state" style="margin-top:12px">
+            <div class="empty-state-icon">🚛</div>
+            <div class="empty-state-title">Select your licence class</div>
+            <div class="empty-state-sub">Your licence class determines which vehicle types and configurations are available to you.</div>
+          </div>
+        </div>
+
+      </div>
+
+      <!-- ── COMPLIANCE TAB ── -->
+      <div class="tab-content" id="tab-compliance">
+
+        <!-- Populated by compliance API response -->
+        <div id="complianceReport">
+          <div class="empty-state">
+            <div class="empty-state-icon">✅</div>
+            <div class="empty-state-title">No compliance report yet</div>
+            <div class="empty-state-sub">Plan a route and select a vehicle to generate a compliance report against NHVR regulations.</div>
+          </div>
+        </div>
+
+        <div class="divider"></div>
+        <div class="section-label">NHVR Reference</div>
+        <div class="nhvr-ref-box">
+          Heavy Vehicle National Law (HVNL)<br>
+          Mass, Dimension and Loading Requirements<br>
+          Schedule 2 — Height Limits by Vehicle Category<br>
+          <a href="https://www.nhvr.gov.au/road-access/mass-limits" target="_blank" style="color:var(--accent)">nhvr.gov.au/road-access/mass-limits</a>
+        </div>
+      </div>
+
+      <!-- ── PROFILE TAB ── -->
+      <div class="tab-content" id="tab-profile">
+
+        <!--  replace with profile function -->
+        <div class="profile-header">
+          <div class="profile-avatar" id="profileAvatar">?</div>
+          <div>
+            <div class="profile-name" id="profileName">Not signed in</div>
+            <div class="profile-licence" id="profileLicence">Sign in to save vehicles and preferences</div>
+          </div>
+        </div>
+
+        <div class="section-label">Saved Vehicles</div>
+       
+        <div id="savedVehiclesList">
+          <div class="empty-state">
+            <div class="empty-state-icon">💾</div>
+            <div class="empty-state-title">No saved vehicles</div>
+            <div class="empty-state-sub">Sign in and configure a vehicle to save it here for quick access.</div>
+          </div>
+        </div>
+
+        <button class="cta secondary" id="saveVehicleBtn" style="display:none">
+          + Save Current Vehicle
+        </button>
+
+        <div class="divider"></div>
+        <div class="section-label">Account</div>
+        <!-- Sprint 3: populated from auth system -->
+        <div id="accountBox">
+          <div class="empty-state">
+            <div class="empty-state-icon">👤</div>
+            <div class="empty-state-title">Sign in required</div>
+            <div class="empty-state-sub">User profiles and saved data will be available once authentication is implemented in Sprint 3.</div>
+          </div>
+        </div>
+
+      </div>
+
+    </div><!-- end panel-body -->
+  </div><!-- end panel -->
+</div><!-- end main -->
+
+<!-- MAPLIBRE GL -->
+<script src="https://unpkg.com/maplibre-gl@4.5.0/dist/maplibre-gl.js"></script>
+<script>
+
+//  MAP INIT 
+const map = new maplibregl.Map({
+  container: 'map',
+  style: 'https://tiles.openfreemap.org/styles/liberty',
+  center: [144.9631, -37.8136], // Melbourne CBD default
+  zoom: 11,
+  maxZoom: 18,
+  minZoom: 5,
+  attributionControl: false
+});
+map.addControl(new maplibregl.NavigationControl({ showCompass: false }), 'top-right');
+map.addControl(new maplibregl.ScaleControl({ unit: 'metric' }), 'bottom-right');
+
+//  ROUTE DISPLAY 
+
+function displayRoute(routeGeoJSON, violations) {
+  document.getElementById('mapEmpty').style.display = 'none';
+
+  if (map.getSource('route')) {
+    map.getSource('route').setData(routeGeoJSON);
+  } else {
+    map.addSource('route', { type: 'geojson', data: routeGeoJSON });
+    map.addLayer({ id: 'route-glow', type: 'line', source: 'route',
+      paint: { 'line-color': '#4285f4', 'line-width': 14, 'line-opacity': 0.18, 'line-blur': 4 },
+      layout: { 'line-cap': 'round', 'line-join': 'round' }
+    });
+    map.addLayer({ id: 'route-casing', type: 'line', source: 'route',
+      paint: { 'line-color': '#1a6fd4', 'line-width': 9 },
+      layout: { 'line-cap': 'round', 'line-join': 'round' }
+    });
+    map.addLayer({ id: 'route-line', type: 'line', source: 'route',
+      paint: { 'line-color': '#4285f4', 'line-width': 6 },
+      layout: { 'line-cap': 'round', 'line-join': 'round' }
+    });
+  }
+}
+
+
+//  ROUTE PLANNING
+
+function planRoute() {
+  const origin = document.getElementById('originInput').value.trim();
+  const dest   = document.getElementById('destInput').value.trim();
+  if (!origin || !dest) {
+    alert('Please enter both an origin and destination.');
+    return;
+  }
+  
+  alert('Route planning will connect to the pgRouting backend in Sprint 3.\nOrigin: ' + origin + '\nDestination: ' + dest);
+}
+
+function swapInputs() {
+  const o = document.getElementById('originInput');
+  const d = document.getElementById('destInput');
+  [o.value, d.value] = [d.value, o.value];
+}
+
+// Called when backend returns route + violations
+function showRouteSummary(distanceKm, durationMin, violations) {
+  document.getElementById('routePlaceholder').style.display = 'none';
+  document.getElementById('routeSummary').style.display = 'block';
+  document.getElementById('routeDistance').textContent = distanceKm.toFixed(1);
+  const hrs = Math.floor(durationMin / 60);
+  const mins = durationMin % 60;
+  document.getElementById('routeTime').textContent = hrs > 0 ? hrs + 'h ' + mins + 'm' : mins + 'm';
+  const vc = document.getElementById('routeViolations');
+  vc.textContent = violations.length;
+  vc.style.color = violations.length > 0 ? 'var(--danger)' : '#1e8e3e';
+
+  // Compliance banner
+  const result = document.getElementById('routeComplianceResult');
+  if (violations.length === 0) {
+    result.innerHTML = '<div class="compliance-result pass"><div class="result-icon">✓</div><div class="result-body"><div class="result-title">ROUTE COMPLIANT</div><div class="result-detail">No violations detected across this route.</div></div></div>';
+  } else {
+    result.innerHTML = '<div class="compliance-result fail"><div class="result-icon">⚠</div><div class="result-body"><div class="result-title">NON-COMPLIANT ROUTE</div><div class="result-detail">' + violations.length + ' violation(s) detected. Review before departure.</div></div></div>';
+  }
+
+  // Violations list
+  const vlist = document.getElementById('violationsList');
+  vlist.innerHTML = violations.map(v => `
+    <div class="violation-item ${v.severity === 'warning' ? 'warn-item' : ''}">
+      <div class="v-dot" style="${v.severity === 'warning' ? 'background:var(--warn)' : ''}"></div>
+      <div class="v-text">
+        <span class="v-road">${v.road_name}</span><br>
+        ${v.detail}<br>
+        <span style="color:var(--text3)">Segment ${v.segment_id}</span>
+      </div>
+    </div>`).join('');
+
+  // Update steps
+  document.getElementById('step1').className = 'step done';
+  document.getElementById('step3').className = 'step active';
+}
+
+//  COMPLIANCE REPORT
+
+function showComplianceReport(report) {
+  const box = document.getElementById('complianceReport');
+  const compliant = report.route_compliant;
+  const errors = report.violations.filter(v => v.severity === 'error');
+  const warnings = report.violations.filter(v => v.severity === 'warning');
+
+  let html = compliant
+    ? '<div class="compliance-result pass"><div class="result-icon">✓</div><div class="result-body"><div class="result-title">ROUTE COMPLIANT</div><div class="result-detail">' + report.summary + '</div></div></div>'
+    : '<div class="compliance-result fail"><div class="result-icon">✕</div><div class="result-body"><div class="result-title">NON-COMPLIANT</div><div class="result-detail">' + report.summary + '</div></div></div>';
+
+  if (errors.length) {
+    html += '<div class="section-label" style="margin-top:14px">Errors (' + errors.length + ')</div>';
+    html += errors.map(v => `<div class="violation-item"><div class="v-dot"></div><div class="v-text"><span class="v-road">${v.road_name}</span><br>${v.detail}<br><span style="color:var(--text3)">${v.violation_type} · ${v.vehicle_value} vs ${v.limit_value}</span></div></div>`).join('');
+  }
+  if (warnings.length) {
+    html += '<div class="section-label" style="margin-top:14px">Warnings (' + warnings.length + ')</div>';
+    html += warnings.map(v => `<div class="violation-item warn-item"><div class="v-dot" style="background:var(--warn)"></div><div class="v-text"><span class="v-road">${v.road_name}</span><br>${v.detail}</div></div>`).join('');
+  }
+
+  box.innerHTML = html;
+}
+
+// ── VEHICLE SELECTION — calls PHP API backed by vehicle.db (change this or you can delete)
+// Endpoints: get_types.php, get_configs.php, get_config_details.php
+
+// Licence class → allowed vehicle_type IDs (Victorian licence rules)
+const LICENCE_TYPES = {
+  LR: [1],
+  MR: [1],
+  HR: [1],
+  HC: [1, 2, 11, 12, 13],
+  MC: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13],
+};
+
+let selectedConfig = null;
+let tareOverrides  = {};
+
+function onLicChange() {
+  const lic = document.getElementById('licSel').value;
+  if (!lic) {
+    document.getElementById('classRow').style.display       = 'none';
+    document.getElementById('typeSection').style.display    = 'none';
+    document.getElementById('configSection').style.display  = 'none';
+    document.getElementById('detailSection').style.display  = 'none';
+    document.getElementById('vehiclePlaceholder').style.display = 'block';
+    return;
+  }
+  document.getElementById('vehiclePlaceholder').style.display = 'none';
+  document.getElementById('classRow').style.display    = 'block';
+  document.getElementById('typeSection').style.display = 'block';
+  loadTypes();
+}
+
+function onClassChange() { loadTypes(); }
+
+// Calls get_types.php?class_id=X — returns [{vehicle_id, class_id, name}]
+function loadTypes() {
+  const lic   = document.getElementById('licSel').value;
+  const cls   = document.getElementById('classSel').value;
+  const sel   = document.getElementById('typeSel');
+  const allowed = LICENCE_TYPES[lic] || [];
+
+  sel.innerHTML = '<option value="">Loading...</option>';
+  document.getElementById('configSection').style.display = 'none';
+  document.getElementById('detailSection').style.display = 'none';
+
+  fetch(`get_types.php?class_id=${cls}`)
+    .then(r => r.json())
+    .then(types => {
+      const filtered = types.filter(t => allowed.includes(t.vehicle_id));
+      sel.innerHTML = '<option value="">— Select vehicle type —</option>';
+      if (!filtered.length) {
+        sel.innerHTML = '<option value="">No types for this licence + class</option>';
+        return;
+      }
+      filtered.forEach(t => {
+        const opt = document.createElement('option');
+        opt.value = t.vehicle_id;
+        opt.textContent = t.name;
+        sel.appendChild(opt);
+      });
+    })
+    .catch(() => {
+      sel.innerHTML = '<option value="">Error loading types</option>';
+    });
+}
+
+function onTypeChange() {
+  const vehicleId = document.getElementById('typeSel').value;
+  if (!vehicleId) {
+    document.getElementById('configSection').style.display = 'none';
+    document.getElementById('detailSection').style.display = 'none';
+    return;
+  }
+  loadConfigs(vehicleId);
+}
+
+// Calls get_configs.php?vehicle_id=X — returns [{axle_id, config_name, ...}]
+function loadConfigs(vehicleId) {
+  const sel = document.getElementById('configSel');
+  sel.innerHTML = '<option value="">Loading...</option>';
+  document.getElementById('configSection').style.display = 'block';
+  document.getElementById('detailSection').style.display = 'none';
+
+  fetch(`get_configs.php?vehicle_id=${vehicleId}`)
+    .then(r => r.json())
+    .then(configs => {
+      if (!configs.length) {
+        sel.innerHTML = '<option value="">No configurations found</option>';
+        return;
+      }
+      sel.innerHTML = configs.map(c =>
+        `<option value="${c.axle_id}">${c.config_name} (${c.axle_count} axles)</option>`
+      ).join('');
+      onConfigChange();
+    })
+    .catch(() => {
+      sel.innerHTML = '<option value="">Error loading configurations</option>';
+    });
+}
+
+function onConfigChange() {
+  const axleId = document.getElementById('configSel').value;
+  if (!axleId) return;
+  loadConfigDetails(axleId);
+}
+
+// Calls get_config_details.php?axle_id=X
+// Returns: {tare, gml, cml, hml, max_length, axle_count, groups:[{group_name, group_limit}]}
+function loadConfigDetails(axleId) {
+  document.getElementById('detailSection').style.display = 'none';
+
+  fetch(`get_config_details.php?axle_id=${axleId}`)
+    .then(r => r.json())
+    .then(data => {
+      selectedConfig = { id: parseInt(axleId), ...data };
+
+      // Tare — use local override if driver has set one
+      const tare     = tareOverrides[axleId] !== undefined ? tareOverrides[axleId] : data.tare;
+      const tareInput = document.getElementById('tareInput');
+      const tareNote  = document.getElementById('tareNote');
+      tareInput.value = tare;
+      tareInput.style.borderColor = tareOverrides[axleId] !== undefined ? 'var(--warn)' : '';
+      tareNote.textContent = tareOverrides[axleId] !== undefined ? 'kg — overridden (tap to reset)' : 'kg — from database';
+
+      // Disable mass schemes that don't apply to this config
+      const scheme = document.getElementById('schemeSel');
+      scheme.options[0].disabled = !data.gml;
+      scheme.options[1].disabled = !data.cml;
+      scheme.options[2].disabled = !data.hml;
+      if (scheme.options[scheme.selectedIndex]?.disabled) {
+        scheme.value = data.hml ? 'hml' : data.cml ? 'cml' : 'gml';
+      }
+
+      // Config info box
+      document.getElementById('configInfo').innerHTML = `
+        <table style="width:100%;font-family:var(--mono);font-size:11px;border-collapse:collapse">
+          <tr><td class="info-key">Axles</td><td>${data.axle_count}</td></tr>
+          <tr><td class="info-key">Max length</td><td>${data.max_length ? data.max_length + ' m' : '—'}</td></tr>
+          <tr><td class="info-key">Default tare</td><td>${parseFloat(data.tare).toLocaleString()} kg</td></tr>
+        </table>
+        <table class="mass-table" style="margin-top:8px">
+          <tr><th>GML</th><th>CML</th><th>HML</th></tr>
+          <tr>
+            <td>${data.gml ? data.gml + 't' : '—'}</td>
+            <td>${data.cml ? data.cml + 't' : '—'}</td>
+            <td style="color:${data.hml ? 'var(--accent)' : 'inherit'}">${data.hml ? data.hml + 't' : '—'}</td>
+          </tr>
+        </table>`;
+
+      // Axle groups
+      document.getElementById('axleGroupTable').innerHTML =
+        '<tr><th>Axle Group</th><th>Limit (kg)</th></tr>' +
+        (data.groups || []).map(g =>
+          `<tr><td>${g.group_name}</td><td>${parseFloat(g.group_limit).toLocaleString()}</td></tr>`
+        ).join('');
+
+      document.getElementById('detailSection').style.display = 'block';
+      runCheck();
+    })
+    .catch(() => {
+      document.getElementById('configInfo').innerHTML =
+        '<div class="empty-msg">Error loading configuration details.</div>';
+      document.getElementById('detailSection').style.display = 'block';
+    });
+}
+
+function onTareChange() {
+  if (!selectedConfig) return;
+  const val  = parseFloat(document.getElementById('tareInput').value);
+  const note = document.getElementById('tareNote');
+  const inp  = document.getElementById('tareInput');
+  if (!isNaN(val) && val !== selectedConfig.tare) {
+    tareOverrides[selectedConfig.id] = val;
+    inp.style.borderColor = 'var(--warn)';
+    note.textContent = 'kg — overridden (tap to reset)';
+    note.onclick = resetTare;
+    note.style.cursor = 'pointer';
+    note.style.color = 'var(--warn)';
+  } else {
+    delete tareOverrides[selectedConfig.id];
+    inp.style.borderColor = '';
+    note.textContent = 'kg — from database';
+    note.onclick = null;
+    note.style.cursor = '';
+    note.style.color = '';
+  }
+  runCheck();
+}
+
+function resetTare() {
+  if (!selectedConfig) return;
+  delete tareOverrides[selectedConfig.id];
+  document.getElementById('tareInput').value = selectedConfig.tare;
+  onTareChange();
+}
+
+function runCheck() {
+  if (!selectedConfig) return;
+  const tare    = parseFloat(document.getElementById('tareInput').value) || 0;
+  const payload = parseFloat(document.getElementById('payloadInput').value) || 0;
+  const scheme  = document.getElementById('schemeSel').value;
+  const gross   = tare + payload;
+  const grossT  = (gross / 1000).toFixed(2);
+  const limit   = selectedConfig[scheme];
+  const result  = document.getElementById('checkResult');
+  result.style.display = 'block';
+
+  if (!limit) {
+    result.className = 'compliance-result warn';
+    result.innerHTML = `<div class="result-icon">—</div><div class="result-body"><div class="result-title">SCHEME N/A</div><div class="result-detail">${scheme.toUpperCase()} is not applicable for this configuration.</div></div>`;
+    return;
+  }
+  const headroom = (limit - gross / 1000).toFixed(2);
+  const over     = (gross / 1000 - limit).toFixed(2);
+  if (gross <= limit * 1000) {
+    result.className = 'compliance-result pass';
+    result.innerHTML = `<div class="result-icon">✓</div><div class="result-body"><div class="result-title">PASS — ${scheme.toUpperCase()}</div><div class="result-detail">Gross ${grossT}t within ${scheme.toUpperCase()} limit of ${limit}t (${headroom}t headroom).</div></div>`;
+  } else {
+    result.className = 'compliance-result fail';
+    result.innerHTML = `<div class="result-icon">✕</div><div class="result-body"><div class="result-title">FAIL — ${scheme.toUpperCase()}</div><div class="result-detail">Gross ${grossT}t exceeds ${scheme.toUpperCase()} limit of ${limit}t by ${over}t.</div></div>`;
+  }
+}
+
+// Returns current vehicle profile for passing to APIs
+function getVehicleProfile() {
+  if (!selectedConfig) return null;
+  return {
+    axle_id:    selectedConfig.id,
+    config_name: selectedConfig.name,
+    axle_count: selectedConfig.axles,
+    tare_kg:    parseFloat(document.getElementById('tareInput').value) || selectedConfig.tare,
+    payload_kg: parseFloat(document.getElementById('payloadInput').value) || 0,
+    gross_kg:   (parseFloat(document.getElementById('tareInput').value) || selectedConfig.tare) +
+                (parseFloat(document.getElementById('payloadInput').value) || 0),
+    mass_class: document.getElementById('schemeSel').value.toUpperCase(),
+    gml:        selectedConfig.gml,
+    cml:        selectedConfig.cml,
+    hml:        selectedConfig.hml,
+  };
+}
+
+function applyVehicle() {
+  const profile = getVehicleProfile();
+  if (!profile) { alert('Please select a vehicle configuration.'); return; }
+  document.getElementById('step2').className = 'step done';
+  switchTab('route', document.querySelectorAll('.tab')[0]);
+
+}
+
+// ── TAB SWITCHING 
+function switchTab(id, el) {
+  document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+  document.getElementById('tab-' + id).classList.add('active');
+  el.classList.add('active');
+}
+
+
+</script>
+</body>
+</html>
