@@ -38,24 +38,24 @@ def closest_point(long, lat) -> int:
         return -1
     return result[0]
 
-    # cost * CASE tag_id
-    #             WHEN 101 THEN 0.5   -- motorway, make very attractive
-    #             WHEN 102 THEN 0.7   -- trunk
-    #             WHEN 103 THEN 0.8   -- primary
-    #             WHEN 106 THEN 2.0   -- residential, penalise
-    #             WHEN 107 THEN 5.0   -- living street, heavily penalise
-    #             WHEN 110 THEN 10.0  -- service road
-    #             ELSE 1.0
-    #         END AS cost,
-    #         reverse_cost * CASE tag_id
-    #             WHEN 101 THEN 0.5   -- motorway, make very attractive
-    #             WHEN 102 THEN 0.7   -- trunk
-    #             WHEN 103 THEN 0.8   -- primary
-    #             WHEN 106 THEN 2.0   -- residential, penalise
-    #             WHEN 107 THEN 5.0   -- living street, heavily penalise
-    #             WHEN 110 THEN 10.0  -- service road
-    #             ELSE 1.0
-    #         END AS reverse_cost
+    # Direct from adminer.
+
+
+# tag_id	tag_key	tag_value	way_count
+# 101	highway	motorway	3965
+# 102	highway	motorway_link	4319
+# 104	highway	trunk	27138
+# 105	highway	trunk_link	2057
+# 106	highway	primary	47148
+# 107	highway	primary_link	3164
+# 108	highway	secondary	60216
+# 109	highway	secondary_link	2127
+# 110	highway	tertiary	123219
+# 111	highway	tertiary_link	2644
+# 112	highway	residential	475413
+# 113	highway	living_street	1442
+# 114	highway	service	267085
+# 117	highway	unclassified	128840
 
 
 def create_route(id_1, id_2):
@@ -63,24 +63,40 @@ def create_route(id_1, id_2):
     cur = conn.cursor()
     cur.execute(
         """
-        SELECT seq, route.node, route.edge, ways.osm_id, ways.name, route.cost FROM pgr_astar(
+        SELECT seq, route.node, route.edge, ways.osm_id, ways.name, route.cost, tag_id FROM pgr_astar(
         'SELECT id, source, target, x1, y1, x2, y2, cost * CASE tag_id
-                    WHEN 101 THEN 0.5   -- motorway, make very attractive
-                    WHEN 102 THEN 0.7   -- trunk
-                    WHEN 103 THEN 0.8   -- primary
-                    WHEN 106 THEN 2.0   -- residential
-                    WHEN 107 THEN 5.0   -- living street
-                    WHEN 110 THEN 10.0  -- service road
-                    ELSE 1.0
+                    WHEN 101 THEN 0.5   -- motorway
+                    WHEN 102 THEN 0.5   -- motorway_link
+                    WHEN 104 THEN 0.8   -- trunk
+                    WHEN 105 THEN 0.8   -- trunk_link
+                    WHEN 106 THEN 0.8   -- primary
+                    WHEN 107 THEN 0.8   -- primary-link
+                    WHEN 108 THEN 0.8   -- secondary
+                    WHEN 109 THEN 0.8   -- secondary-link
+                    WHEN 110 THEN 2.0   -- tertiary
+                    WHEN 111 THEN 2.0   -- tertiary-link
+                    WHEN 112 THEN 20.0  -- Residential
+                    WHEN 113 THEN 20.0  -- living_street
+                    WHEN 114 THEN 5.0   -- service road
+                    WHEN 117 THEN 20.0  -- Unclassified, probably best to avoid it?
+                    ELSE 1.0 -- No other cases but... idk if someone invents a new road?
                 END AS cost,
                 reverse_cost * CASE tag_id
-                    WHEN 101 THEN 0.5   -- motorway, make very attractive
-                    WHEN 102 THEN 0.7   -- trunk
-                    WHEN 103 THEN 0.8   -- primary
-                    WHEN 106 THEN 2.0   -- residential
-                    WHEN 107 THEN 5.0   -- living street
-                    WHEN 110 THEN 10.0  -- service road
-                    ELSE 1.0
+                    WHEN 101 THEN 0.5   -- motorway
+                    WHEN 102 THEN 0.5   -- motorway_link
+                    WHEN 104 THEN 0.8   -- trunk
+                    WHEN 105 THEN 0.8   -- trunk_link
+                    WHEN 106 THEN 0.8   -- primary
+                    WHEN 107 THEN 0.8   -- primary-link
+                    WHEN 108 THEN 0.8   -- secondary
+                    WHEN 109 THEN 0.8   -- secondary-link
+                    WHEN 110 THEN 2.0   -- tertiary
+                    WHEN 111 THEN 2.0   -- tertiary-link
+                    WHEN 112 THEN 20.0  -- Residential
+                    WHEN 113 THEN 20.0  -- living_street
+                    WHEN 114 THEN 5.0   -- service road
+                    WHEN 117 THEN 20.0  -- Unclassified, probably best to avoid it?
+                    ELSE 1.0 -- No other cases but... idk if someone invents a new road?
                 END AS reverse_cost
         FROM ways ',
         %s, %s,
@@ -99,10 +115,46 @@ def create_compliant_route(id_1, id_2):
     cur = conn.cursor()
     cur.execute(
         """
-        SELECT seq, route.node, route.edge, ways.osm_id, ways.name, route.cost FROM pgr_astar(
-        'SELECT id, source, target, x1, y1, x2, y2, cost, reverse_cost
-        FROM ways
-        LEFT JOIN victoria_s_volvo_semi_trailer_lzehv_pre_approved_network ON ways.osm_id = osm_way_id WHERE access_code != ''restricted'' OR access_code IS NULL',
+        SELECT seq, route.node, route.edge, ways.osm_id, ways.name, route.cost, tag_id FROM pgr_astar(
+        'SELECT id, source, target, x1, y1, x2, y2, cost * CASE tag_id
+                    WHEN 101 THEN 0.5   -- motorway
+                    WHEN 102 THEN 0.5   -- motorway_link
+                    WHEN 104 THEN 0.8   -- trunk
+                    WHEN 105 THEN 0.8   -- trunk_link
+                    WHEN 106 THEN 0.8   -- primary
+                    WHEN 107 THEN 0.8   -- primary-link
+                    WHEN 108 THEN 0.8   -- secondary
+                    WHEN 109 THEN 0.8   -- secondary-link
+                    WHEN 110 THEN 2.0   -- tertiary
+                    WHEN 111 THEN 2.0   -- tertiary-link
+                    WHEN 112 THEN 20.0  -- Residential
+                    WHEN 113 THEN 20.0  -- living_street
+                    WHEN 114 THEN 5.0   -- service road
+                    WHEN 117 THEN 20.0  -- Unclassified, probably best to avoid it?
+                    ELSE 1.0 -- No other cases but... idk if someone invents a new road?
+                END AS cost,
+                reverse_cost * CASE tag_id
+                    WHEN 101 THEN 0.5   -- motorway
+                    WHEN 102 THEN 0.5   -- motorway_link
+                    WHEN 104 THEN 0.8   -- trunk
+                    WHEN 105 THEN 0.8   -- trunk_link
+                    WHEN 106 THEN 0.8   -- primary
+                    WHEN 107 THEN 0.8   -- primary-link
+                    WHEN 108 THEN 0.8   -- secondary
+                    WHEN 109 THEN 0.8   -- secondary-link
+                    WHEN 110 THEN 2.0   -- tertiary
+                    WHEN 111 THEN 2.0   -- tertiary-link
+                    WHEN 112 THEN 20.0  -- Residential
+                    WHEN 113 THEN 20.0  -- living_street
+                    WHEN 114 THEN 5.0   -- service road
+                    WHEN 117 THEN 20.0  -- Unclassified, probably best to avoid it?
+                    ELSE 1.0 -- No other cases but... idk if someone invents a new road?
+                END AS reverse_cost
+        FROM ways WHERE NOT EXISTS (
+            SELECT 1 FROM victoria_s_volvo_semi_trailer_lzehv_pre_approved_network
+            WHERE ways.osm_id = osm_way_id
+            AND LOWER(access_code) = ''restricted''
+        )',
         %s, %s,
         directed => true
         ) AS route JOIN ways ON route.edge = ways.id ORDER BY seq
@@ -127,15 +179,36 @@ def get_road_info(id):
     return result
 
 
+def get_restriction_for_osm_id(osm_id):
+    cur = conn.cursor()
+    cur.execute(
+        """
+        SELECT * FROM victoria_s_volvo_semi_trailer_lzehv_pre_approved_network WHERE osm_way_id = %s
+    """,
+        (osm_id,),
+    )
+    result = cur.fetchone()
+    cur.close()
+    return result
+
+
 def structure_route_as_dict(route):
     result = []
     for index, row in enumerate(route):
+        geo = id_to_geo(row[1])
         result.append(
             {
+                # Below is what route gets
+                # (121, 166319, 776012, 485235230, 'Francis Street', 0.00011368289933051796, 108)
                 "seq": row[0],
+                "node_id": row[1],
+                "edge_id": row[2],
                 "osm_id": row[3],
                 "name": row[4],
                 "cost": row[5],
+                "tag_id": row[6],
+                "geo_start": geo[0][0],
+                "geo_end": geo[1][0],
             }
         )
     return result
@@ -143,9 +216,23 @@ def structure_route_as_dict(route):
 
 def route_info(route):
     for row in route:
+        # This is everything but often dont need everything
+        # print(
+        #     f"{row['seq']}. Name: {row['name']}, Internal ID: {row['edge_id']}, OSM ID: {row['osm_id']}, Cost: {row['cost']}, Tag ID: {row['tag_id']}, Geo Start: {row['geo_start']}, Geo End: {row['geo_end']}"
+        # )
         print(
-            f"{row['seq']}. Name: {row['name']}, OSM ID: {row['osm_id']}, Cost: {row['cost']}"
+            f"{row['seq']}. Name: {row['name']}, Cost: {row['cost']}, Tag ID: {row['tag_id']}"
         )
+        print(get_restriction_for_osm_id(row['osm_id']))
+
+
+def id_to_geo(id):
+    cur = conn.cursor()
+    cur.execute("SELECT x1, y1 FROM ways WHERE id = %s;", (id,))
+    start = cur.fetchall()
+    cur.execute("SELECT x2, y2 FROM ways WHERE id = %s;", (id,))
+    end = cur.fetchall()
+    return start, end
 
 
 def test():
@@ -172,7 +259,8 @@ end_source = lookup_id_from_osm_id(13303784)
 print(get_road_info(start_source))
 print(get_road_info(end_source))
 print(start_source, end_source)
-route_info(structure_route_as_dict(create_route(start_source, end_source)))
+# route_info(structure_route_as_dict(create_route(start_source, end_source)))
+route_info(structure_route_as_dict(create_compliant_route(start_source, end_source)))
 
 # print(f"Burwood Road: {lookup_id_from_osm_id(1126612997)}")
 
