@@ -2,3 +2,4 @@
 .vscode/
 **/*.osm
 **/*.osm.pbf
+**/*.gpkg
