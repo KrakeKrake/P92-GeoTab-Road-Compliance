@@ -195,7 +195,7 @@ def get_restriction_for_osm_id(osm_id):
 def structure_route_as_dict(route):
     result = []
     for index, row in enumerate(route):
-        geo = id_to_geo(row[1])
+        geo = id_to_geo(row[2])
         result.append(
             {
                 # Below is what route gets
@@ -221,9 +221,9 @@ def route_info(route):
         #     f"{row['seq']}. Name: {row['name']}, Internal ID: {row['edge_id']}, OSM ID: {row['osm_id']}, Cost: {row['cost']}, Tag ID: {row['tag_id']}, Geo Start: {row['geo_start']}, Geo End: {row['geo_end']}"
         # )
         print(
-            f"{row['seq']}. Name: {row['name']}, Cost: {row['cost']}, Tag ID: {row['tag_id']}"
+            f"{row['geo_start']}, {row['geo_end']}"
         )
-        print(get_restriction_for_osm_id(row['osm_id']))
+        #print(get_restriction_for_osm_id(row['osm_id']))
 
 
 def id_to_geo(id):
