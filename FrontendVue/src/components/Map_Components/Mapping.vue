@@ -1,26 +1,46 @@
-<script setup>
-import { LMap, LTileLayer, LPolyline } from "@vue-leaflet/vue-leaflet";
+<script setup lang="ts">
+import { onMounted, ref } from "vue";
+import maplibregl from "maplibre-gl";
 
-const zoom = 10;
+const mapContainer = ref<HTMLElement | null>(null);
 
-const center = [-37.8136, 144.9631];
+onMounted(() => {
+    const map = new maplibregl.Map({
+        container: mapContainer.value!,
+        style: "https://tiles.openfreemap.org/styles/liberty",
+        center: [144.9631, -37.8136],
+        zoom: 10,
+    });
+    map.on("load", () => {
+        map.addSource("route", {
+            type: "geojson",
+            data: {
+                type: "Feature",
+                geometry: {
+                    type: "LineString",
+                    coordinates: [
+                        [144.9631, -37.8136],
+                        [144.97, -37.82],
+                        [144.98, -37.83],
+                    ],
+                },
+                properties: {},
+            },
+        });
 
-const linePoints = [
-    [-37.8136, 144.9631],
-    [-37.82, 144.97],
-    [-37.83, 144.98],
-];
+        map.addLayer({
+            id: "route",
+            type: "line",
+            source: "route",
+            paint: {
+                "line-color": "#ff0000",
+                "line-width": 4,
+            },
+        });
+    });
+});
 </script>
 
 <template>
-    <p>Test</p>
-
-    <l-map v-model:zoom="zoom" :center="center" style="height: 600px">
-        <l-tile-layer
-            url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-            attribution="© OpenStreetMap contributors"
-        />
-
-        <l-polyline :lat-lngs="linePoints" color="red" :weight="3" />
-    </l-map>
+    <div ref="mapContainer" style="height: 600px" />
 </template>
