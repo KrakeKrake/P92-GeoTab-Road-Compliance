@@ -4,7 +4,7 @@
     <div class="section-label">Licence Class</div>
     <div class="select-row">
       <div class="sel-wrap">
-        <select class="sel" v-model="selectedLicence" @change="onLicenceChange" disabled>
+        <select class="sel" v-model="selectedLicence" @change="onLicenceChange">
           <option value="">— Select licence class —</option>
           <option value="MC">MC — Multi Combination</option>
           <option value="HC">HC — Heavy Combination</option>
@@ -13,6 +13,13 @@
           <option value="LR">LR — Light Rigid</option>
         </select>
         <span class="sel-arrow">▾</span>
+      </div>
+    </div>
+
+    <div v-if="!isLoggedIn" class="info-box">
+      <div class="input-unit">
+        Guest mode: select a licence class manually to test vehicle validation. 
+        Login is only required for saving profile preferences.
       </div>
     </div>
 
@@ -49,21 +56,25 @@
 
     <div v-if="currentAxleConfig" class="info-box">
       <table class="mass-table">
-        <tr>
-          <th>Mass Scheme</th>
-          <th>Maximum Mass</th>
-          <th>Status</th>
-        </tr>
+        <thead>
+          <tr>
+            <th>Mass Scheme</th>
+            <th>Maximum Mass</th>
+            <th>Status</th>
+          </tr>
+        </thead>
+        <tbody>
 
-        <tr v-for="limit in massLimits" :key="limit.mass_scheme_id">
-          <td>{{ limit.mass_scheme_id }}</td>
-          <td>
-            {{ limit.mass_limit_t !== null ? limit.mass_limit_t + ' t' : '—' }}
-          </td>
-          <td>
-            {{ limit.applicable ? 'Applicable' : 'Not applicable' }}
-          </td>
-        </tr>
+          <tr v-for="limit in massLimits" :key="limit.mass_scheme_id">
+            <td>{{ limit.mass_scheme_id }}</td>
+            <td>
+              {{ limit.mass_limit_t !== null ? limit.mass_limit_t + ' t' : '—' }}
+            </td>
+            <td>
+              {{ limit.applicable ? 'Applicable' : 'Not applicable' }}
+            </td>
+          </tr>
+        </tbody>
       </table>
 
       <div v-if="currentAxleConfig.note" class="input-unit">
@@ -103,6 +114,7 @@
 
     <div v-if="currentProfile" class="info-box">
       <table style="width:100%;font-family:var(--mono);font-size:11px;border-collapse:collapse">
+        <tbody>
         <tr>
           <td class="info-key">Width</td>
           <td>{{ currentProfile.default_width_m }} m</td>
@@ -115,6 +127,7 @@
           <td class="info-key">Length</td>
           <td>{{ currentProfile.default_length_m }} m</td>
         </tr>
+        </tbody>
       </table>
     </div>
 
@@ -135,6 +148,7 @@
     <div v-if="currentProfile && useCustomDimensions">
       <div v-if="dimensionRanges" class="info-box" style="margin-bottom:10px">
         <table style="width:100%;font-family:var(--mono);font-size:11px;border-collapse:collapse">
+          <tbody>
           <tr>
             <td class="info-key">Width range</td>
             <td>{{ dimensionRanges.min_width_m }} m – {{ dimensionRanges.max_width_m }} m</td>
@@ -147,6 +161,7 @@
             <td class="info-key">Length range</td>
             <td>{{ dimensionRanges.min_length_m }} m – {{ dimensionRanges.max_length_m }} m</td>
           </tr>
+          </tbody>
         </table>
       </div>
 
@@ -269,9 +284,11 @@
     <div v-if="!selectedLicence" id="vehiclePlaceholder">
       <div class="empty-state" style="margin-top:12px">
         <div class="empty-state-icon">🚛</div>
-        <div class="empty-state-title">Login required</div>
+        <div class="empty-state-title">{{ isLoggedIn ? 'No vehicle selected' : 'Guest mode' }}</div>
         <div class="empty-state-sub">
-          Your saved licence class determines which vehicle profiles and axle configurations are available.
+          {{ isLoggedIn
+            ? 'Your saved licence class determines which vehicle profiles and axle configurations are available.'
+            : 'Select a licence class above to test the vehicle validation workflow without logging in.' }}
         </div>
       </div>
     </div>
@@ -316,17 +333,35 @@ const extraAnswers = ref({})
 const result = ref(null)
 const loggedInUser = ref(null)
 
+const GUEST_LICENCE_STORAGE_KEY = 'guest_selected_licence_class'
+
+const isLoggedIn = computed(() => {
+  return !!loggedInUser.value
+})
+
 async function loadLoggedInUser() {
   const storedUser = localStorage.getItem('user')
 
+  // Guest mode
   if (!storedUser) {
-    result.value = {
-      error: 'No logged-in user found. Please login first.',
+    loggedInUser.value = null
+
+    const savedGuestLicence = sessionStorage.getItem(GUEST_LICENCE_STORAGE_KEY)
+
+    if (savedGuestLicence) {
+      selectedLicence.value = savedGuestLicence
+      await onLicenceChange()
     }
+
     return
   }
 
-  loggedInUser.value = JSON.parse(storedUser)
+  try {
+    loggedInUser.value = JSON.parse(storedUser)
+  } catch {
+    loggedInUser.value = null
+    return
+  }
 
   if (loggedInUser.value.licence_class_id) {
     selectedLicence.value = loggedInUser.value.licence_class_id
@@ -350,6 +385,14 @@ onMounted(async () => {
 })
 
 async function onLicenceChange() {
+  if (!loggedInUser.value) {
+    if (selectedLicence.value) {
+      sessionStorage.setItem(GUEST_LICENCE_STORAGE_KEY, selectedLicence.value)
+    } else {
+      sessionStorage.removeItem(GUEST_LICENCE_STORAGE_KEY)
+    }
+  }
+
   resetAfterLicence()
 
   if (!selectedLicence.value) return
@@ -663,8 +706,11 @@ function formatClassification(classification) {
 }
 
 async function resetVehicleTab() {
+  const savedLicence = selectedLicence.value
+
   resetAfterLicence()
 
+  // Logged-in user: restore saved profile if available
   if (loggedInUser.value?.licence_class_id) {
     selectedLicence.value = loggedInUser.value.licence_class_id
 
@@ -680,6 +726,16 @@ async function resetVehicleTab() {
         await onProfileChange()
       }
     }
+
+    return
+  }
+
+  // Guest user: keep selected licence, but clear vehicle/axle/mass selections
+  selectedLicence.value = savedLicence
+
+  if (selectedLicence.value) {
+    sessionStorage.setItem(GUEST_LICENCE_STORAGE_KEY, selectedLicence.value)
+    await onLicenceChange()
   }
 }
 </script>
