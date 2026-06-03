@@ -9,12 +9,13 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "geojson": "^0.5.0",
     "maplibre-gl": "^5.24.0",
     "mitt": "^3.0.1",
-    "vue": "^3.5.34",
-    "vue-maplibre-gl": "^5.6.1"
+    "vue": "^3.5.34"
   },
   "devDependencies": {
+    "@types/geojson": "^7946.0.16",
     "@types/node": "^24.12.3",
     "@vitejs/plugin-vue": "^6.0.6",
     "@vue-leaflet/vue-leaflet": "^0.10.1",
