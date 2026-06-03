@@ -1,5 +1,5 @@
 <template>
-  <div class="user-chip-wrapper">
+  <div class="user-chip-wrapper" ref="userChipRef">
     <div class="user-chip" @click="toggleMenu">
       <div class="user-avatar">{{ userInitial }}</div>
       <span>{{ userLabel }}</span>
@@ -24,8 +24,10 @@ import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 
 const router = useRouter()
+
 const menuOpen = ref(false)
 const authVersion = ref(0)
+const userChipRef = ref(null)
 
 function refreshAuth() {
   authVersion.value++
@@ -68,6 +70,14 @@ function closeMenu() {
   menuOpen.value = false
 }
 
+function handleClickOutside(event) {
+  if (!userChipRef.value) return
+
+  if (!userChipRef.value.contains(event.target)) {
+    closeMenu()
+  }
+}
+
 function goLogin() {
   closeMenu()
   router.push('/login')
@@ -87,20 +97,27 @@ function signOut() {
   localStorage.removeItem('auth_token')
   localStorage.removeItem('user')
 
+  sessionStorage.removeItem('guest_selected_licence_class')
+  sessionStorage.removeItem('p1_selected_licence_class')
+
   refreshAuth()
   closeMenu()
 
   window.dispatchEvent(new Event('auth-updated'))
 
-  router.push('/')
+  router.push('/').then(() => {
+    window.location.reload()
+  })
 }
 
 onMounted(() => {
   window.addEventListener('auth-updated', refreshAuth)
+  document.addEventListener('click', handleClickOutside)
 })
 
 onUnmounted(() => {
   window.removeEventListener('auth-updated', refreshAuth)
+  document.removeEventListener('click', handleClickOutside)
 })
 </script>
 
