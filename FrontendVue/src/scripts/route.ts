@@ -6,8 +6,8 @@ export interface wayPoint {
   name: string;
   cost: number;
   tag_id: number;
-  geo_start: number;
-  geo_end: number;
+  geo_start: [number, number];
+  geo_end: [number, number];
   restrictions: Restriction;
 }
 // "restrictions":[107024,198994037,13,"Approved with Conditions","<p><p>Conditionally Approved - Williamstown Road&nbsp;no-truck zone&nbsp;applies from 8pm to 6am, weekdays, and from 8pm Friday until 6am Monday, for ALL TRUCKS. Enforcement begins only when WGT opens.&nbsp;</p></p>","Williamstown Road","Department of Transport and Planning   "]
