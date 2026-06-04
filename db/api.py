@@ -9,7 +9,7 @@ from flask import Flask, jsonify, request
 app = Flask(__name__)
 
 
-@app.route("/route")
+@app.route("/api/route")
 def route():
     osm_id_1 = request.args.get("osm_id_1")
     osm_id_2 = request.args.get("osm_id_2")
