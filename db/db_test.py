@@ -5,7 +5,8 @@ DB_NAME = "o2p"
 DB_USER = "o2p"
 DB_PASSWORD = "lU0pgj9up@vty1B#plVA"
 
-conn = postgres.connect(host=DB_URL, user=DB_USER, password=DB_PASSWORD)
+conn = postgres.connect(host=DB_URL, user=DB_USER, password=DB_PASSWORD, autocommit=True)
+
 print(conn)
 print("Connected!")
 
