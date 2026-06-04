@@ -1,7 +1,3 @@
-export interface Route {
-  wayPoints: wayPoint[];
-}
-
 export interface wayPoint {
   seq: number;
   node_id: number;
