@@ -4,6 +4,6 @@ import Mapping from "./components/Map_Components/Mapping.vue";
 </script>
 
 <template>
-    <MainView></MainView>
-    <!-- <Mapping></Mapping> -->
+     <MainView></MainView> 
+     <!-- <Mapping></Mapping>  -->
 </template>
