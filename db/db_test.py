@@ -5,7 +5,9 @@ DB_NAME = "o2p"
 DB_USER = "o2p"
 DB_PASSWORD = "lU0pgj9up@vty1B#plVA"
 
-conn = postgres.connect(host=DB_URL, user=DB_USER, password=DB_PASSWORD, autocommit=True)
+conn = postgres.connect(
+    host=DB_URL, user=DB_USER, password=DB_PASSWORD, autocommit=True
+)
 
 print(conn)
 print("Connected!")
@@ -59,51 +61,97 @@ def closest_point(long, lat) -> int:
 # 117	highway	unclassified	128840
 
 
-def create_route(id_1, id_2):
-
+def lookup_end_id_from_osm_id(osm_id):
+    # Returns the TARGET of the LAST segment for an OSM way.
     cur = conn.cursor()
     cur.execute(
-        """
-        SELECT seq, route.node, route.edge, ways.osm_id, ways.name, route.cost, tag_id FROM pgr_astar(
-        'SELECT id, source, target, x1, y1, x2, y2, cost * CASE tag_id
-                    WHEN 101 THEN 0.5   -- motorway
-                    WHEN 102 THEN 0.5   -- motorway_link
-                    WHEN 104 THEN 0.8   -- trunk
-                    WHEN 105 THEN 0.8   -- trunk_link
-                    WHEN 106 THEN 0.8   -- primary
-                    WHEN 107 THEN 0.8   -- primary-link
-                    WHEN 108 THEN 0.8   -- secondary
-                    WHEN 109 THEN 0.8   -- secondary-link
-                    WHEN 110 THEN 2.0   -- tertiary
-                    WHEN 111 THEN 2.0   -- tertiary-link
-                    WHEN 112 THEN 20.0  -- Residential
-                    WHEN 113 THEN 20.0  -- living_street
-                    WHEN 114 THEN 5.0   -- service road
-                    WHEN 117 THEN 20.0  -- Unclassified, probably best to avoid it?
-                    ELSE 1.0 -- No other cases but... idk if someone invents a new road?
-                END AS cost,
-                reverse_cost * CASE tag_id
-                    WHEN 101 THEN 0.5   -- motorway
-                    WHEN 102 THEN 0.5   -- motorway_link
-                    WHEN 104 THEN 0.8   -- trunk
-                    WHEN 105 THEN 0.8   -- trunk_link
-                    WHEN 106 THEN 0.8   -- primary
-                    WHEN 107 THEN 0.8   -- primary-link
-                    WHEN 108 THEN 0.8   -- secondary
-                    WHEN 109 THEN 0.8   -- secondary-link
-                    WHEN 110 THEN 2.0   -- tertiary
-                    WHEN 111 THEN 2.0   -- tertiary-link
-                    WHEN 112 THEN 20.0  -- Residential
-                    WHEN 113 THEN 20.0  -- living_street
-                    WHEN 114 THEN 5.0   -- service road
-                    WHEN 117 THEN 20.0  -- Unclassified, probably best to avoid it?
-                    ELSE 1.0 -- No other cases but... idk if someone invents a new road?
-                END AS reverse_cost
-        FROM ways ',
-        %s, %s,
-        directed => true
+        "SELECT target FROM ways WHERE osm_id = %s ORDER BY id DESC LIMIT 1",
+        (osm_id,),
+    )
+    result = cur.fetchone()
+    cur.close()
+    return result[0] if result else None
+
+
+_SPEED_SQL = """
+    CASE tag_id
+        WHEN 101 THEN 110.0  -- motorway
+        WHEN 102 THEN 80.0   -- motorway_link
+        WHEN 104 THEN 100.0  -- trunk
+        WHEN 105 THEN 80.0   -- trunk_link
+        WHEN 106 THEN 80.0   -- primary
+        WHEN 107 THEN 60.0   -- primary_link
+        WHEN 108 THEN 60.0   -- secondary
+        WHEN 109 THEN 50.0   -- secondary_link
+        WHEN 110 THEN 50.0   -- tertiary
+        WHEN 111 THEN 40.0   -- tertiary_link
+        WHEN 112 THEN 50.0   -- residential (AU default)
+        WHEN 113 THEN 10.0   -- living_street
+        WHEN 114 THEN 20.0   -- service
+        WHEN 117 THEN 50.0   -- unclassified
+        ELSE 50.0
+    END
+"""
+
+# Preference multiplier applied on top of real travel time.
+# < 1.0 = preferred (motorways/trunks are easier and safer to drive).
+# > 1.0 = penalised (avoid residential/service unless significantly faster).
+# Deliberately modest so a genuinely faster residential path still wins.
+_PREF_SQL = """
+    CASE tag_id
+        WHEN 101 THEN 0.4  -- motorway
+        WHEN 102 THEN 0.4   -- motorway_link
+        WHEN 104 THEN 0.88   -- trunk
+        WHEN 105 THEN 0.92   -- trunk_link
+        WHEN 106 THEN 0.95   -- primary
+        WHEN 107 THEN 0.95   -- primary_link
+        WHEN 108 THEN 1.00   -- secondary (neutral baseline)
+        WHEN 109 THEN 1.00   -- secondary_link
+        WHEN 110 THEN 1.10   -- tertiary
+        WHEN 111 THEN 1.10   -- tertiary_link
+        WHEN 112 THEN 1.40   -- residential
+        WHEN 113 THEN 2.50   -- living_street
+        WHEN 114 THEN 2.00   -- service
+        WHEN 117 THEN 1.50   -- unclassified
+        ELSE 1.0
+    END
+"""
+
+# cost_s from osm2pgrouting = length_m / (maxspeed_kmh / 3.6), in seconds.
+# Fall back to length_m + AU default speeds when cost_s = 0 (missing maxspeed tag).
+# Then multiply by _PREF_SQL to bias toward higher-order roads.
+_COST_EXPR = f"""
+    (CASE WHEN cost_s > 0 THEN cost_s
+          ELSE length_m / ({_SPEED_SQL} / 3.6)
+     END) * ({_PREF_SQL})
+"""
+
+# IMPORTANT: negative reverse_cost_s means one-way street (osm2pgrouting uses -1 to signal
+# "not traversable in this direction"). Never replace a negative with the fallback formula —
+# doing so makes the road bidirectional and lets the router go the wrong way down a one-way.
+_RCOST_EXPR = f"""
+    CASE WHEN reverse_cost_s < 0 THEN reverse_cost_s
+         ELSE (CASE WHEN reverse_cost_s > 0 THEN reverse_cost_s
+                    ELSE length_m / ({_SPEED_SQL} / 3.6)
+               END) * ({_PREF_SQL})
+    END
+"""
+
+
+def create_route(id_1, id_2):
+    cur = conn.cursor()
+    cur.execute(
+        f"""
+        SELECT seq, route.node, route.edge, ways.osm_id, ways.name, route.cost, tag_id
+        FROM pgr_dijkstra(
+            'SELECT id, source, target,
+                {_COST_EXPR} AS cost,
+                {_RCOST_EXPR} AS reverse_cost
+             FROM ways',
+            %s, %s,
+            directed => true
         ) AS route JOIN ways ON route.edge = ways.id ORDER BY seq
-    """,
+        """,
         (id_1, id_2),
     )
     result = cur.fetchall()
@@ -112,54 +160,24 @@ def create_route(id_1, id_2):
 
 
 def create_compliant_route(id_1, id_2):
-
     cur = conn.cursor()
     cur.execute(
-        """
-        SELECT seq, route.node, route.edge, ways.osm_id, ways.name, route.cost, tag_id FROM pgr_astar(
-        'SELECT id, source, target, x1, y1, x2, y2, cost * CASE tag_id
-                    WHEN 101 THEN 0.5   -- motorway
-                    WHEN 102 THEN 0.5   -- motorway_link
-                    WHEN 104 THEN 0.8   -- trunk
-                    WHEN 105 THEN 0.8   -- trunk_link
-                    WHEN 106 THEN 0.8   -- primary
-                    WHEN 107 THEN 0.8   -- primary-link
-                    WHEN 108 THEN 0.8   -- secondary
-                    WHEN 109 THEN 0.8   -- secondary-link
-                    WHEN 110 THEN 2.0   -- tertiary
-                    WHEN 111 THEN 2.0   -- tertiary-link
-                    WHEN 112 THEN 20.0  -- Residential
-                    WHEN 113 THEN 20.0  -- living_street
-                    WHEN 114 THEN 5.0   -- service road
-                    WHEN 117 THEN 20.0  -- Unclassified, probably best to avoid it?
-                    ELSE 1.0 -- No other cases but... idk if someone invents a new road?
-                END AS cost,
-                reverse_cost * CASE tag_id
-                    WHEN 101 THEN 0.5   -- motorway
-                    WHEN 102 THEN 0.5   -- motorway_link
-                    WHEN 104 THEN 0.8   -- trunk
-                    WHEN 105 THEN 0.8   -- trunk_link
-                    WHEN 106 THEN 0.8   -- primary
-                    WHEN 107 THEN 0.8   -- primary-link
-                    WHEN 108 THEN 0.8   -- secondary
-                    WHEN 109 THEN 0.8   -- secondary-link
-                    WHEN 110 THEN 2.0   -- tertiary
-                    WHEN 111 THEN 2.0   -- tertiary-link
-                    WHEN 112 THEN 20.0  -- Residential
-                    WHEN 113 THEN 20.0  -- living_street
-                    WHEN 114 THEN 5.0   -- service road
-                    WHEN 117 THEN 20.0  -- Unclassified, probably best to avoid it?
-                    ELSE 1.0 -- No other cases but... idk if someone invents a new road?
-                END AS reverse_cost
-        FROM ways WHERE NOT EXISTS (
-            SELECT 1 FROM victoria_s_volvo_semi_trailer_lzehv_pre_approved_network
-            WHERE ways.osm_id = osm_way_id
-            AND LOWER(access_code) = ''restricted''
-        )',
-        %s, %s,
-        directed => true
+        f"""
+        SELECT seq, route.node, route.edge, ways.osm_id, ways.name, route.cost, tag_id
+        FROM pgr_dijkstra(
+            'SELECT id, source, target,
+                {_COST_EXPR} AS cost,
+                {_RCOST_EXPR} AS reverse_cost
+             FROM ways
+             WHERE NOT EXISTS (
+                 SELECT 1 FROM victoria_s_volvo_semi_trailer_lzehv_pre_approved_network
+                 WHERE ways.osm_id = osm_way_id
+                 AND LOWER(access_code) = ''restricted''
+             )',
+            %s, %s,
+            directed => true
         ) AS route JOIN ways ON route.edge = ways.id ORDER BY seq
-    """,
+        """,
         (id_1, id_2),
     )
     result = cur.fetchall()
@@ -223,8 +241,10 @@ def route_info(route):
         # print(
         #     f"{row['seq']}. Name: {row['name']}, Internal ID: {row['edge_id']}, OSM ID: {row['osm_id']}, Cost: {row['cost']}, Tag ID: {row['tag_id']}, Geo Start: {row['geo_start']}, Geo End: {row['geo_end']}"
         # )
-        print(f"{row['seq']}. Name: {row['name']}, Internal ID: {row['edge_id']}, OSM ID: {row['osm_id']}, Cost: {row['cost']}, Tag ID: {row['tag_id']}, Geo Start: {row['geo_start']}, Geo End: {row['geo_end']}, Restrictions: {row['restrictions']}")
-        #print(get_restriction_for_osm_id(row['osm_id']))
+        print(
+            f"{row['seq']}. Name: {row['name']}, Internal ID: {row['edge_id']}, OSM ID: {row['osm_id']}, Cost: {row['cost']}, Tag ID: {row['tag_id']}, Geo Start: {row['geo_start']}, Geo End: {row['geo_end']}, Restrictions: {row['restrictions']}"
+        )
+        # print(get_restriction_for_osm_id(row['osm_id']))
 
 
 def id_to_geo(id):
