@@ -221,7 +221,7 @@ def route_info(route):
         #     f"{row['seq']}. Name: {row['name']}, Internal ID: {row['edge_id']}, OSM ID: {row['osm_id']}, Cost: {row['cost']}, Tag ID: {row['tag_id']}, Geo Start: {row['geo_start']}, Geo End: {row['geo_end']}"
         # )
         print(
-            f"{row['geo_start']}, {row['geo_end']}"
+            f"{row['geo_start']}, {row['geo_end']}, "
         )
         #print(get_restriction_for_osm_id(row['osm_id']))
 
@@ -254,13 +254,13 @@ def get_id_from_osm_id(osm_id):
 # Testing using various OSM IDs revelead that... well idk
 # Occasionally routing sometimes failed, but testing with a random point on the calder freeway worked across the ENTIRETY of Victoria?
 # But two places in the CBD two blocks away fail to route sometimes?
-start_source = lookup_id_from_osm_id(199910372)
-end_source = lookup_id_from_osm_id(13303784)
-print(get_road_info(start_source))
-print(get_road_info(end_source))
-print(start_source, end_source)
-# route_info(structure_route_as_dict(create_route(start_source, end_source)))
-route_info(structure_route_as_dict(create_compliant_route(start_source, end_source)))
+# start_source = lookup_id_from_osm_id(199910372)
+# end_source = lookup_id_from_osm_id(13303784)
+# print(get_road_info(start_source))
+# print(get_road_info(end_source))
+# print(start_source, end_source)
+# # route_info(structure_route_as_dict(create_route(start_source, end_source)))
+# route_info(structure_route_as_dict(create_compliant_route(start_source, end_source)))
 
 # print(f"Burwood Road: {lookup_id_from_osm_id(1126612997)}")
 

@@ -1,11 +1,10 @@
-from flask import Flask, jsonify, request
-
 from db_test import (
     create_compliant_route,
     create_route,
     lookup_id_from_osm_id,
     structure_route_as_dict,
 )
+from flask import Flask, jsonify, request
 
 app = Flask(__name__)
 
@@ -14,7 +13,7 @@ app = Flask(__name__)
 def route():
     osm_id_1 = request.args.get("osm_id_1")
     osm_id_2 = request.args.get("osm_id_2")
-
+    print(osm_id_1, osm_id_2)
     id_1 = lookup_id_from_osm_id(osm_id_1)
     id_2 = lookup_id_from_osm_id(osm_id_2)
 
