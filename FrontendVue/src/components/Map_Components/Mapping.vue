@@ -228,5 +228,6 @@ async function onSubmitOSM() {
 .map-container {
     flex: 1;
     min-height: 500px;
+    width: 600px;
 }
 </style>
