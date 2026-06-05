@@ -9,12 +9,7 @@
                 NHVR Compliance System
             </div>
             <div class="topbar-right">
-                <div class="user-chip">
-                    <div class="user-avatar">
-                        {{ user ? user.initials : "?" }}
-                    </div>
-                    <span>{{ user ? user.name : "Not signed in" }}</span>
-                </div>
+                <UserChip />
             </div>
         </header>
 
@@ -66,10 +61,11 @@ import Mapping from "../../components/Map_Components/Mapping.vue";
 import RouteTab from "./RouteTab.vue";
 import VehicleTab from "./VehicleTab.vue";
 import ComplianceTab from "./ComplianceTab.vue";
+import UserChip from "./UserChip.vue";
 
 export default {
     name: "App",
-    components: { MapView, RouteTab, VehicleTab, ComplianceTab, Mapping },
+    components: { MapView, RouteTab, VehicleTab, ComplianceTab, Mapping, UserChip },
 
     data() {
         return {
