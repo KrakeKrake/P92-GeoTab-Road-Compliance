@@ -3,4 +3,4 @@
 **/*.osm
 **/*.osm.pbf
 **/*.gpkg
-db/venv/
+*venv/
