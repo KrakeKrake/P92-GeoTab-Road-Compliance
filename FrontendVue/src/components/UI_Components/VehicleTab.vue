@@ -1,11 +1,10 @@
 <template>
-  <div>
-
+  <div class="vehicle-tab-scroll">
     <!-- Licence Class -->
     <div class="section-label">Licence Class</div>
     <div class="select-row">
       <div class="sel-wrap">
-        <select class="sel" v-model="licenceClass" @change="onLicChange">
+        <select class="sel" v-model="selectedLicence" @change="onLicenceChange">
           <option value="">— Select licence class —</option>
           <option value="MC">MC — Multi Combination</option>
           <option value="HC">HC — Heavy Combination</option>
@@ -17,378 +16,735 @@
       </div>
     </div>
 
-    <template v-if="licenceClass">
-
-      <!-- Vehicle Class -->
-      <div class="section-label">Vehicle Class</div>
-      <div class="select-row">
-        <div class="sel-wrap">
-          <select class="sel" v-model="vehicleClass" @change="onClassChange">
-            <option value="2">Class 2</option>
-            <option value="3">Class 3</option>
-          </select>
-          <span class="sel-arrow">▾</span>
-        </div>
-      </div>
-
-      <!-- Vehicle Type — from get_types.php -->
-      <div class="section-label">Vehicle Type</div>
-      <div class="select-row">
-        <div class="sel-wrap">
-          <select class="sel" v-model="selectedTypeId" @change="onTypeChange" :disabled="loadingTypes">
-            <option value="">{{ loadingTypes ? 'Loading...' : '— Select vehicle type —' }}</option>
-            <option v-for="t in filteredTypes" :key="t.vehicle_id" :value="t.vehicle_id">
-              {{ t.name }}
-            </option>
-          </select>
-          <span class="sel-arrow">▾</span>
-        </div>
-      </div>
-
-      <template v-if="selectedTypeId">
-
-        <!-- Axle Configuration — from get_configs.php -->
-        <div class="section-label">Axle Configuration</div>
-        <div class="select-row">
-          <div class="sel-wrap">
-            <select class="sel" v-model="selectedAxleId" @change="onConfigChange" :disabled="loadingConfigs">
-              <option value="">{{ loadingConfigs ? 'Loading...' : '— Select configuration —' }}</option>
-              <option v-for="c in configs" :key="c.axle_id" :value="c.axle_id">
-                {{ c.config_name }} ({{ c.axle_count }} axles)
-              </option>
-            </select>
-            <span class="sel-arrow">▾</span>
-          </div>
-        </div>
-
-        <!-- Configuration detail — from get_config_details.php -->
-        <template v-if="configDetail">
-
-          <div class="section-label">Configuration Details</div>
-          <div class="info-box">
-            <table style="width:100%;font-family:var(--mono);font-size:11px;border-collapse:collapse">
-              <tbody>
-                <tr><td class="info-key">Axles</td><td>{{ configDetail.axle_count }}</td></tr>
-                <tr><td class="info-key">Max length</td><td>{{ configDetail.max_length ? configDetail.max_length + ' m' : '—' }}</td></tr>
-                <tr><td class="info-key">Default tare</td><td>{{ Number(configDetail.tare).toLocaleString() }} kg</td></tr>
-              </tbody>
-            </table>
-            <table class="mass-table" style="margin-top:8px">
-              <thead>
-                <tr><th>GML</th><th>CML</th><th>HML</th></tr>
-              </thead>
-              <tbody>
-                <tr>
-                  <td>{{ configDetail.gml ? configDetail.gml + 't' : '—' }}</td>
-                  <td>{{ configDetail.cml ? configDetail.cml + 't' : '—' }}</td>
-                  <td :style="{ color: configDetail.hml ? 'var(--accent)' : 'inherit' }">
-                    {{ configDetail.hml ? configDetail.hml + 't' : '—' }}
-                  </td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
-
-          <!-- Mass Scheme & Payload -->
-          <div class="section-label">Mass Scheme &amp; Payload</div>
-          <div class="select-row">
-            <div class="sel-wrap">
-              <div class="sel-label">Mass Scheme</div>
-              <select class="sel" v-model="massScheme" @change="runCheck">
-                <option value="gml" :disabled="!configDetail.gml">GML — General Mass Limits</option>
-                <option value="cml" :disabled="!configDetail.cml">CML — Concessional</option>
-                <option value="hml" :disabled="!configDetail.hml">HML — Higher Mass Limits</option>
-              </select>
-              <span class="sel-arrow">▾</span>
-            </div>
-          </div>
-
-          <div class="input-row">
-            <div class="input-wrap">
-              <div class="input-label">Tare Weight</div>
-              <input
-                class="input-field"
-                type="number"
-                min="0"
-                step="100"
-                v-model.number="tare"
-                :style="{ borderColor: tareOverridden ? 'var(--warn)' : '' }"
-              >
-              <div
-                class="input-unit"
-                :style="{ color: tareOverridden ? 'var(--warn)' : '', cursor: tareOverridden ? 'pointer' : '' }"
-                @click="tareOverridden ? resetTare() : null"
-              >
-                {{ tareOverridden ? 'kg — overridden (tap to reset)' : 'kg — from database' }}
-              </div>
-            </div>
-            <div class="input-wrap">
-              <div class="input-label">Payload</div>
-              <input
-                class="input-field"
-                type="number"
-                min="0"
-                step="100"
-                v-model.number="payload"
-                placeholder="0"
-              >
-              <div class="input-unit">kg</div>
-            </div>
-          </div>
-
-          <!-- Mass check result -->
-          <div v-if="checkResult" class="compliance-result" :class="checkResult.type">
-            <div class="result-icon">{{ checkResult.icon }}</div>
-            <div class="result-body">
-              <div class="result-title">{{ checkResult.title }}</div>
-              <div class="result-detail">{{ checkResult.detail }}</div>
-            </div>
-          </div>
-
-          <!-- Axle Groups -->
-          <div class="section-label">Axle Groups</div>
-          <table class="mass-table">
-            <thead>
-              <tr><th>Axle Group</th><th>Limit (kg)</th></tr>
-            </thead>
-            <tbody>
-              <tr v-for="g in configDetail.groups" :key="g.group_name">
-                <td>{{ g.group_name }}</td>
-                <td>{{ Number(g.group_limit).toLocaleString() }}</td>
-              </tr>
-            </tbody>
-          </table>
-
-          <button class="cta" style="margin-top:14px" @click="applyVehicle">
-            Apply Vehicle &amp; Check Route
-          </button>
-
-        </template>
-
-        <div v-else-if="loadingDetail" class="empty-msg">Loading configuration...</div>
-        <div v-else-if="error" class="empty-msg" style="color:var(--danger)">{{ error }}</div>
-
-      </template>
-
-    </template>
-
-    <!-- Empty state before licence selected -->
-    <div v-else class="empty-state" style="margin-top:12px">
-      <div class="empty-state-icon">🚛</div>
-      <div class="empty-state-title">Select your licence class</div>
-      <div class="empty-state-sub">
-        Your licence class determines which vehicle types and configurations are available.
+    <div v-if="!isLoggedIn" class="info-box">
+      <div class="input-unit">
+        Guest mode: select a licence class manually to test vehicle validation. 
+        Login is only required for saving profile preferences.
       </div>
     </div>
 
+    <!-- Vehicle Profile -->
+    <div v-if="selectedLicence" class="section-label">Vehicle Profile</div>
+    <div v-if="selectedLicence" class="select-row">
+      <div class="sel-wrap">
+        <select class="sel" v-model="selectedProfileId" @change="onProfileChange">
+          <option value="">— Select vehicle profile —</option>
+          <option v-for="profile in profiles" :key="profile.profile_id" :value="profile.profile_id">
+            {{ profile.display_name }}
+          </option>
+        </select>
+        <span class="sel-arrow">▾</span>
+      </div>
+    </div>
+
+    <!-- Axle Configuration -->
+    <div v-if="currentProfile" class="section-label">Axle Configuration</div>
+    <div v-if="currentProfile" class="select-row">
+      <div class="sel-wrap">
+        <select class="sel" v-model="selectedAxleConfigId" @change="onAxleChange">
+          <option value="">— Select axle configuration —</option>
+          <option v-for="config in axleConfigs" :key="config.config_id" :value="config.config_id">
+            {{ config.display_name }}
+          </option>
+        </select>
+        <span class="sel-arrow">▾</span>
+      </div>
+    </div>
+
+    <!-- Mass Scheme Limits -->
+    <div v-if="currentAxleConfig" class="section-label">Available Mass Limits</div>
+
+    <div v-if="currentAxleConfig" class="info-box">
+      <table class="mass-table">
+        <thead>
+          <tr>
+            <th>Mass Scheme</th>
+            <th>Maximum Mass</th>
+            <th>Status</th>
+          </tr>
+        </thead>
+        <tbody>
+
+          <tr v-for="limit in massLimits" :key="limit.mass_scheme_id">
+            <td>{{ limit.mass_scheme_id }}</td>
+            <td>
+              {{ limit.mass_limit_t !== null ? limit.mass_limit_t + ' t' : '—' }}
+            </td>
+            <td>
+              {{ limit.applicable ? 'Applicable' : 'Not applicable' }}
+            </td>
+          </tr>
+        </tbody>
+      </table>
+
+      <div v-if="currentAxleConfig.note" class="input-unit">
+        Note: {{ currentAxleConfig.note }}
+      </div>
+    </div>
+
+    <!-- Preferred Mass Scheme -->
+    <div v-if="currentAxleConfig" class="section-label">
+      Preferred Mass Scheme &amp; Operating Mass
+    </div>
+
+    <div v-if="currentAxleConfig" class="select-row">
+      <div class="sel-wrap">
+        <div class="sel-label">Preferred Mass Scheme</div>
+        <select class="sel" v-model="selectedMassScheme">
+          <option value="">— Select mass scheme —</option>
+          <option v-for="limit in applicableMassLimits" :key="limit.mass_scheme_id" :value="limit.mass_scheme_id">
+            {{ limit.mass_scheme_id }} — max {{ limit.mass_limit_t }} t
+          </option>
+        </select>
+        <span class="sel-arrow">▾</span>
+      </div>
+    </div>
+
+    <div v-if="currentAxleConfig" class="input-row">
+      <div class="input-wrap">
+        <div class="input-label">Operating Mass</div>
+        <input class="input-field" v-model.number="operatingMass" type="number" min="0" step="0.1"
+          placeholder="e.g. 67" />
+        <div class="input-unit">tonnes</div>
+      </div>
+    </div>
+
+    <!-- Default Dimensions -->
+    <div v-if="currentProfile" class="section-label">Default Vehicle Dimensions</div>
+
+    <div v-if="currentProfile" class="info-box">
+      <table style="width:100%;font-family:var(--mono);font-size:11px;border-collapse:collapse">
+        <tbody>
+        <tr>
+          <td class="info-key">Width</td>
+          <td>{{ currentProfile.default_width_m }} m</td>
+        </tr>
+        <tr>
+          <td class="info-key">Height</td>
+          <td>{{ currentProfile.default_height_m }} m</td>
+        </tr>
+        <tr>
+          <td class="info-key">Length</td>
+          <td>{{ currentProfile.default_length_m }} m</td>
+        </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <!-- Custom Dimensions Option -->
+    <div v-if="currentProfile" class="section-label">Custom Dimensions</div>
+
+    <div v-if="currentProfile" class="select-row">
+      <div class="sel-wrap">
+        <div class="sel-label">Do you want to customise the vehicle dimensions?</div>
+        <select class="sel" v-model="useCustomDimensions">
+          <option :value="false">No — use default dimensions</option>
+          <option :value="true">Yes — enter custom dimensions</option>
+        </select>
+        <span class="sel-arrow">▾</span>
+      </div>
+    </div>
+
+    <div v-if="currentProfile && useCustomDimensions">
+      <div v-if="dimensionRanges" class="info-box" style="margin-bottom:10px">
+        <table style="width:100%;font-family:var(--mono);font-size:11px;border-collapse:collapse">
+          <tbody>
+          <tr>
+            <td class="info-key">Width range</td>
+            <td>{{ dimensionRanges.min_width_m }} m – {{ dimensionRanges.max_width_m }} m</td>
+          </tr>
+          <tr>
+            <td class="info-key">Height range</td>
+            <td>{{ dimensionRanges.min_height_m }} m – {{ dimensionRanges.max_height_m }} m</td>
+          </tr>
+          <tr>
+            <td class="info-key">Length range</td>
+            <td>{{ dimensionRanges.min_length_m }} m – {{ dimensionRanges.max_length_m }} m</td>
+          </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="input-row">
+        <div class="input-wrap">
+          <div class="input-label">Overall Width</div>
+          <input class="input-field" v-model.number="customWidth" type="number" :min="dimensionRanges?.min_width_m"
+            :max="dimensionRanges?.max_width_m" step="0.1"
+            :placeholder="dimensionRanges ? `${dimensionRanges.min_width_m}–${dimensionRanges.max_width_m}` : 'Width'" />
+          <div v-if="dimensionRanges" class="input-unit">
+            m, allowed {{ dimensionRanges.min_width_m }}–{{ dimensionRanges.max_width_m }}
+          </div>
+          <div v-else class="input-unit">m</div>
+        </div>
+
+        <div class="input-wrap">
+          <div class="input-label">Overall Height</div>
+          <input class="input-field" v-model.number="customHeight" type="number" :min="dimensionRanges?.min_height_m"
+            :max="dimensionRanges?.max_height_m" step="0.1"
+            :placeholder="dimensionRanges ? `${dimensionRanges.min_height_m}–${dimensionRanges.max_height_m}` : 'Height'" />
+          <div v-if="dimensionRanges" class="input-unit">
+            m, allowed {{ dimensionRanges.min_height_m }}–{{ dimensionRanges.max_height_m }}
+          </div>
+          <div v-else class="input-unit">m</div>
+        </div>
+      </div>
+
+      <div class="input-row">
+        <div class="input-wrap">
+          <div class="input-label">Overall Length</div>
+          <input class="input-field" v-model.number="customLength" type="number" :min="dimensionRanges?.min_length_m"
+            :max="dimensionRanges?.max_length_m" step="0.1"
+            :placeholder="dimensionRanges ? `${dimensionRanges.min_length_m}–${dimensionRanges.max_length_m}` : 'Length'" />
+          <div v-if="dimensionRanges" class="input-unit">
+            m, allowed {{ dimensionRanges.min_length_m }}–{{ dimensionRanges.max_length_m }}
+          </div>
+          <div v-else class="input-unit">m</div>
+        </div>
+      </div>
+    </div>
+
+
+
+    <!-- Extra Template Questions -->
+    <div v-if="templateQuestions.length" class="section-label">Additional Questions</div>
+
+    <div v-for="question in templateQuestions" :key="question.name" class="select-row">
+      <div class="sel-wrap">
+        <div class="sel-label">{{ question.label }}</div>
+
+        <select v-if="question.type === 'bool'" class="sel" v-model="extraAnswers[question.name]">
+          <option value="">— Select —</option>
+          <option :value="true">True</option>
+          <option :value="false">False</option>
+        </select>
+
+        <input v-else class="input-field" type="number" step="0.1" v-model.number="extraAnswers[question.name]" />
+
+        <span v-if="question.type === 'bool'" class="sel-arrow">▾</span>
+      </div>
+    </div>
+
+    <!-- Actions -->
+    <button class="cta" @click="classifyAndValidate">
+      Classify + Validate Mass
+    </button>
+
+    <button class="cta secondary" @click="resetVehicleTab">
+      Reset Vehicle Selection
+    </button>
+
+    <!-- Result -->
+    <div v-if="result" class="section-label">Result</div>
+
+    <div v-if="result" class="info-box">
+      <!-- Error result -->
+      <div v-if="result.error" class="compliance-result fail">
+        <div class="result-icon">!</div>
+        <div class="result-body">
+          <div class="result-title">ERROR</div>
+          <div class="result-detail">{{ result.error }}</div>
+        </div>
+      </div>
+
+      <!-- Mass result -->
+      <div v-if="result.mass_validation_result" class="compliance-result"
+        :class="result.mass_validation_result.compliant ? 'pass' : 'fail'">
+        <div class="result-icon">
+          {{ result.mass_validation_result.compliant ? '✓' : '!' }}
+        </div>
+
+        <div class="result-body">
+          <div class="result-title">
+            {{ result.mass_validation_result.compliant ? 'MASS COMPLIANT' : 'MASS NOT COMPLIANT' }}
+          </div>
+          <div class="result-detail">
+            {{ result.mass_validation_result.reason }}
+          </div>
+        </div>
+      </div>
+
+      <!-- Category / classification result -->
+      <div v-if="result.classification_result" class="compliance-result"
+        :class="classificationResultClass(result.classification_result.classification)">
+        <div class="result-icon">
+          {{ classificationResultIcon(result.classification_result.classification) }}
+        </div>
+
+        <div class="result-body">
+          <div class="result-title">
+            Category: {{ formatClassification(result.classification_result.classification) }}
+          </div>
+          <div class="result-detail">
+            {{ result.classification_result.reason }}
+          </div>
+        </div>
+      </div>
+    </div>
+    <!-- Empty state -->
+    <div v-if="!selectedLicence" id="vehiclePlaceholder">
+      <div class="empty-state" style="margin-top:12px">
+        <div class="empty-state-icon">🚛</div>
+        <div class="empty-state-title">{{ isLoggedIn ? 'No vehicle selected' : 'Guest mode' }}</div>
+        <div class="empty-state-sub">
+          {{ isLoggedIn
+            ? 'Your saved licence class determines which vehicle profiles and axle configurations are available.'
+            : 'Select a licence class above to test the vehicle validation workflow without logging in.' }}
+        </div>
+      </div>
+    </div>
   </div>
 </template>
 
-<script>
-// Licence class → allowed vehicle_type IDs (Victorian licence rules)
-const LICENCE_TYPES = {
-  LR: [1],
-  MR: [1],
-  HR: [1],
-  HC: [1, 2, 11, 12, 13],
-  MC: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13],
+<script setup>
+import { computed, onMounted, ref } from 'vue'
+
+const API_BASE = 'http://127.0.0.1:8000'
+
+const selectedLicence = ref('')
+const selectedProfileId = ref('')
+const selectedAxleConfigId = ref('')
+const selectedMassScheme = ref('')
+
+const profiles = ref([])
+const axleConfigs = ref([])
+const templateQuestions = ref([])
+
+const currentProfile = ref(null)
+const currentTemplate = ref(null)
+const currentAxleConfig = ref(null)
+
+const massLimits = ref([])
+const axleConfigDetails = ref(null)
+const dimensionRanges = ref(null)
+
+const applicableMassLimits = computed(() => {
+  return massLimits.value.filter((limit) => limit.applicable)
+})
+
+const operatingMass = ref(null)
+
+const useCustomDimensions = ref(false)
+const customWidth = ref(null)
+const customHeight = ref(null)
+const customLength = ref(null)
+
+const extraAnswers = ref({})
+
+const result = ref(null)
+const loggedInUser = ref(null)
+
+const GUEST_LICENCE_STORAGE_KEY = 'guest_selected_licence_class'
+
+const isLoggedIn = computed(() => {
+  return !!loggedInUser.value
+})
+
+async function loadLoggedInUser() {
+  const storedUser = localStorage.getItem('user')
+
+  // Guest mode
+  if (!storedUser) {
+    loggedInUser.value = null
+
+    const savedGuestLicence = sessionStorage.getItem(GUEST_LICENCE_STORAGE_KEY)
+
+    if (savedGuestLicence) {
+      selectedLicence.value = savedGuestLicence
+      await onLicenceChange()
+    }
+
+    return
+  }
+
+  try {
+    loggedInUser.value = JSON.parse(storedUser)
+  } catch {
+    loggedInUser.value = null
+    return
+  }
+
+  if (loggedInUser.value.licence_class_id) {
+    selectedLicence.value = loggedInUser.value.licence_class_id
+
+    await onLicenceChange()
+
+    if (loggedInUser.value.favourite_profile_id) {
+      const favouriteExists = profiles.value.some(
+        (profile) => profile.profile_id === loggedInUser.value.favourite_profile_id
+      )
+
+      if (favouriteExists) {
+        selectedProfileId.value = loggedInUser.value.favourite_profile_id
+        await onProfileChange()
+      }
+    }
+  }
+}
+onMounted(async () => {
+  await loadLoggedInUser()
+})
+
+async function onLicenceChange() {
+  if (!loggedInUser.value) {
+    if (selectedLicence.value) {
+      sessionStorage.setItem(GUEST_LICENCE_STORAGE_KEY, selectedLicence.value)
+    } else {
+      sessionStorage.removeItem(GUEST_LICENCE_STORAGE_KEY)
+    }
+  }
+
+  resetAfterLicence()
+
+  if (!selectedLicence.value) return
+
+  try {
+    const res = await fetch(`${API_BASE}/profiles-by-licence/${selectedLicence.value}`)
+    const data = await res.json()
+
+    profiles.value = Array.isArray(data) ? data : []
+  } catch (error) {
+    result.value = {
+      error: `Failed to load profiles: ${error}`,
+    }
+  }
 }
 
-export default {
-  name: 'VehicleTab',
-  emits: ['applied'],
+function resetAfterLicence() {
+  selectedProfileId.value = ''
+  selectedAxleConfigId.value = ''
+  selectedMassScheme.value = ''
 
-  data() {
-    return {
-      // Selection state
-      licenceClass:    '',
-      vehicleClass:    '2',
-      selectedTypeId:  '',
-      selectedAxleId:  '',
+  profiles.value = []
+  axleConfigs.value = []
+  templateQuestions.value = []
+  massLimits.value = []
 
-      // API data
-      types:        [],
-      configs:      [],
-      configDetail: null,
+  currentProfile.value = null
+  currentTemplate.value = null
+  currentAxleConfig.value = null
+  axleConfigDetails.value = null
 
-      // Loading / error
-      loadingTypes:   false,
-      loadingConfigs: false,
-      loadingDetail:  false,
-      error:          null,
+  operatingMass.value = null
 
-      // Mass & payload
-      massScheme:     'gml',
-      tare:           0,
-      payload:        0,
-      defaultTare:    0,
-      tareOverridden: false,
-      checkResult:    null,
+  useCustomDimensions.value = false
+  customWidth.value = null
+  customHeight.value = null
+  customLength.value = null
+
+  extraAnswers.value = {}
+  result.value = null
+  dimensionRanges.value = null
+}
+
+async function onProfileChange() {
+  selectedAxleConfigId.value = ''
+  selectedMassScheme.value = ''
+
+  axleConfigs.value = []
+  templateQuestions.value = []
+  massLimits.value = []
+
+  currentProfile.value = null
+  currentTemplate.value = null
+  currentAxleConfig.value = null
+  axleConfigDetails.value = null
+  dimensionRanges.value = null
+
+  operatingMass.value = null
+  useCustomDimensions.value = false
+  customWidth.value = null
+  customHeight.value = null
+  customLength.value = null
+
+  extraAnswers.value = {}
+  result.value = null
+
+  if (!selectedProfileId.value) return
+
+  try {
+    const profileRes = await fetch(`${API_BASE}/profiles/${selectedProfileId.value}`)
+    currentProfile.value = await profileRes.json()
+
+    const templateRes = await fetch(`${API_BASE}/templates/${currentProfile.value.template_id}`)
+    currentTemplate.value = await templateRes.json()
+
+    templateQuestions.value = currentTemplate.value.extra_questions || []
+
+    const rangeRes = await fetch(`${API_BASE}/dimension-ranges/${currentProfile.value.template_id}`)
+    dimensionRanges.value = await rangeRes.json()
+
+    const axleRes = await fetch(`${API_BASE}/axle-configs/${currentProfile.value.template_id}`)
+    const axleData = await axleRes.json()
+
+    axleConfigs.value = axleData.axle_configurations || []
+  } catch (error) {
+    result.value = {
+      error: `Failed to load profile details: ${error}`,
     }
-  },
+  }
+}
 
-  computed: {
-    filteredTypes() {
-      const allowed = LICENCE_TYPES[this.licenceClass] || []
-      return this.types.filter(t => allowed.includes(t.vehicle_id))
+async function onAxleChange() {
+  currentAxleConfig.value =
+    axleConfigs.value.find((config) => config.config_id === selectedAxleConfigId.value) || null
+
+  selectedMassScheme.value = ''
+  massLimits.value = []
+  axleConfigDetails.value = null
+  result.value = null
+
+  if (!currentAxleConfig.value) return
+
+  try {
+    const res = await fetch(`${API_BASE}/axle-config-details/${currentAxleConfig.value.config_id}`)
+    const data = await res.json()
+
+    axleConfigDetails.value = data
+    massLimits.value = data.mass_limits || []
+  } catch (error) {
+    result.value = {
+      error: `Failed to load axle mass limits: ${error}`,
+    }
+  }
+}
+
+function buildAnswers() {
+  const answers = {}
+
+  if (useCustomDimensions.value) {
+    if (customWidth.value !== null && customWidth.value !== '') {
+      answers.overall_width_m = Number(customWidth.value)
+    }
+
+    if (customHeight.value !== null && customHeight.value !== '') {
+      answers.overall_height_m = Number(customHeight.value)
+    }
+
+    if (customLength.value !== null && customLength.value !== '') {
+      answers.overall_length_m = Number(customLength.value)
+    }
+  }
+
+  for (const question of templateQuestions.value) {
+    const value = extraAnswers.value[question.name]
+
+    if (value !== '' && value !== undefined && value !== null) {
+      answers[question.name] = value
+    }
+  }
+
+  return answers
+}
+
+async function classifyVehicle() {
+  const payload = {
+    profile_id: currentProfile.value.profile_id,
+    axle_config_id: currentAxleConfig.value.config_id,
+    custom_dimensions: useCustomDimensions.value,
+    answers: buildAnswers(),
+  }
+
+  const res = await fetch(`${API_BASE}/classify`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
     },
-  },
+    body: JSON.stringify(payload),
+  })
 
-  watch: {
-    tare()    { this.tareOverridden = this.tare !== this.defaultTare; this.runCheck() },
-    payload() { this.runCheck() },
-  },
+  return await res.json()
+}
 
-  methods: {
+async function validateMass() {
+  const payload = {
+    axle_config_id: currentAxleConfig.value.config_id,
+    mass_scheme: selectedMassScheme.value,
+    operating_mass_t: Number(operatingMass.value),
+  }
 
-    // ── API CALLS ─────────────────────────────────────────────────────────
-
-    onLicChange() {
-      this.selectedTypeId = ''
-      this.selectedAxleId = ''
-      this.configDetail   = null
-      this.types          = []
-      this.configs        = []
-      this.checkResult    = null
-      if (this.licenceClass) this.loadTypes()
+  const res = await fetch(`${API_BASE}/validate-mass`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
     },
+    body: JSON.stringify(payload),
+  })
 
-    onClassChange() {
-      this.selectedTypeId = ''
-      this.selectedAxleId = ''
-      this.configDetail   = null
-      this.configs        = []
-      this.checkResult    = null
-      this.loadTypes()
-    },
+  return await res.json()
+}
 
-    // GET get_types.php?class_id=X
-    async loadTypes() {
-      this.loadingTypes = true
-      this.error = null
-      try {
-        const res    = await fetch(`get_types.php?class_id=${this.vehicleClass}`)
-        this.types   = await res.json()
-      } catch {
-        this.error = 'Failed to load vehicle types.'
-        this.types = []
-      } finally {
-        this.loadingTypes = false
-      }
-    },
+async function classifyAndValidate() {
+  if (!selectedLicence.value) {
+    result.value = { error: 'Please select a licence class first.' }
+    return
+  }
 
-    onTypeChange() {
-      this.selectedAxleId = ''
-      this.configDetail   = null
-      this.configs        = []
-      this.checkResult    = null
-      if (this.selectedTypeId) this.loadConfigs()
-    },
+  if (!currentProfile.value) {
+    result.value = { error: 'Please select a vehicle profile first.' }
+    return
+  }
 
-    // GET get_configs.php?vehicle_id=X
-    async loadConfigs() {
-      this.loadingConfigs = true
-      this.error = null
-      try {
-        const res     = await fetch(`get_configs.php?vehicle_id=${this.selectedTypeId}`)
-        this.configs  = await res.json()
-      } catch {
-        this.error   = 'Failed to load configurations.'
-        this.configs = []
-      } finally {
-        this.loadingConfigs = false
-      }
-    },
+  if (!currentAxleConfig.value) {
+    result.value = { error: 'Please select an axle configuration first.' }
+    return
+  }
 
-    onConfigChange() {
-      this.configDetail = null
-      this.checkResult  = null
-      if (this.selectedAxleId) this.loadConfigDetails()
-    },
+  if (!selectedMassScheme.value) {
+    result.value = { error: 'Please select a mass scheme.' }
+    return
+  }
 
-    // GET get_config_details.php?axle_id=X
-    async loadConfigDetails() {
-      this.loadingDetail = true
-      this.error = null
-      try {
-        const res          = await fetch(`get_config_details.php?axle_id=${this.selectedAxleId}`)
-        this.configDetail  = await res.json()
-        this.defaultTare   = Number(this.configDetail.tare)
-        this.tare          = this.defaultTare
-        this.tareOverridden = false
-        // Set first available mass scheme
-        if (!this.configDetail.gml) {
-          this.massScheme = this.configDetail.hml ? 'hml' : 'cml'
-        } else {
-          this.massScheme = 'gml'
-        }
-        this.runCheck()
-      } catch {
-        this.error        = 'Failed to load configuration details.'
-        this.configDetail = null
-      } finally {
-        this.loadingDetail = false
-      }
-    },
+  if (!operatingMass.value || Number(operatingMass.value) <= 0) {
+    result.value = { error: 'Please enter a valid operating mass in tonnes.' }
+    return
+  }
 
-    // ── MASS CHECK ────────────────────────────────────────────────────────
+  if (useCustomDimensions.value) {
+    if (customWidth.value === null || customWidth.value === '') {
+      result.value = { error: 'Please enter the overall width.' }
+      return
+    }
 
-    runCheck() {
-      if (!this.configDetail) return
-      const gross  = this.tare + this.payload
-      const grossT = (gross / 1000).toFixed(2)
-      const limit  = this.configDetail[this.massScheme]
+    if (customHeight.value === null || customHeight.value === '') {
+      result.value = { error: 'Please enter the overall height.' }
+      return
+    }
 
-      if (!limit) {
-        this.checkResult = {
-          type: 'warn', icon: '—',
-          title: 'SCHEME N/A',
-          detail: `${this.massScheme.toUpperCase()} is not applicable for this configuration.`
+    if (customLength.value === null || customLength.value === '') {
+      result.value = { error: 'Please enter the overall length.' }
+      return
+    }
+
+    if (dimensionRanges.value) {
+      if (
+        Number(customWidth.value) < dimensionRanges.value.min_width_m ||
+        Number(customWidth.value) > dimensionRanges.value.max_width_m
+      ) {
+        result.value = {
+          error: `Width must be between ${dimensionRanges.value.min_width_m} m and ${dimensionRanges.value.max_width_m} m.`,
         }
         return
       }
-      const limitKg  = limit * 1000
-      const headroom = (limit - gross / 1000).toFixed(2)
-      const over     = (gross / 1000 - limit).toFixed(2)
 
-      if (gross <= limitKg) {
-        this.checkResult = {
-          type: 'pass', icon: '✓',
-          title: `PASS — ${this.massScheme.toUpperCase()}`,
-          detail: `Gross ${grossT}t within ${this.massScheme.toUpperCase()} limit of ${limit}t (${headroom}t headroom).`
+      if (
+        Number(customHeight.value) < dimensionRanges.value.min_height_m ||
+        Number(customHeight.value) > dimensionRanges.value.max_height_m
+      ) {
+        result.value = {
+          error: `Height must be between ${dimensionRanges.value.min_height_m} m and ${dimensionRanges.value.max_height_m} m.`,
         }
-      } else {
-        this.checkResult = {
-          type: 'fail', icon: '✕',
-          title: `FAIL — ${this.massScheme.toUpperCase()}`,
-          detail: `Gross ${grossT}t exceeds ${this.massScheme.toUpperCase()} limit of ${limit}t by ${over}t.`
-        }
-      }
-    },
-
-    resetTare() {
-      this.tare           = this.defaultTare
-      this.tareOverridden = false
-    },
-
-    // ── APPLY ─────────────────────────────────────────────────────────────
-
-    applyVehicle() {
-      if (!this.configDetail) {
-        alert('Please select a vehicle configuration.')
         return
       }
-      this.$emit('applied', {
-        axle_id:    this.selectedAxleId,
-        tare_kg:    this.tare,
-        payload_kg: this.payload,
-        gross_kg:   this.tare + this.payload,
-        mass_class: this.massScheme.toUpperCase(),
-        gml:        this.configDetail.gml,
-        cml:        this.configDetail.cml,
-        hml:        this.configDetail.hml,
-      })
-    },
-  },
+
+      if (
+        Number(customLength.value) < dimensionRanges.value.min_length_m ||
+        Number(customLength.value) > dimensionRanges.value.max_length_m
+      ) {
+        result.value = {
+          error: `Length must be between ${dimensionRanges.value.min_length_m} m and ${dimensionRanges.value.max_length_m} m.`,
+        }
+        return
+      }
+    }
+  }
+
+  try {
+    const classificationResult = await classifyVehicle()
+    const massValidationResult = await validateMass()
+
+    result.value = {
+      selected_licence_class: selectedLicence.value,
+      selected_profile: currentProfile.value.display_name,
+      selected_axle_configuration: currentAxleConfig.value.display_name,
+      selected_mass_scheme: selectedMassScheme.value,
+      operating_mass_t: Number(operatingMass.value),
+      dimensions_used: useCustomDimensions.value
+        ? {
+          width_m: customWidth.value,
+          height_m: customHeight.value,
+          length_m: customLength.value,
+        }
+        : {
+          width_m: currentProfile.value.default_width_m,
+          height_m: currentProfile.value.default_height_m,
+          length_m: currentProfile.value.default_length_m,
+        },
+      classification_result: classificationResult,
+      mass_validation_result: massValidationResult,
+    }
+  } catch (error) {
+    result.value = {
+      error: `Failed to classify or validate: ${error}`,
+    }
+  }
+}
+
+function classificationResultClass(classification) {
+  if (classification === 'invalid_input') return 'fail'
+  if (classification === 'unknown') return 'fail'
+  if (classification === 'class_3') return 'warn'
+
+  return 'pass'
+}
+
+function classificationResultIcon(classification) {
+  if (classification === 'invalid_input') return '✕'
+  if (classification === 'unknown') return '✕'
+  if (classification === 'class_3') return '!'
+
+  return '✓'
+}
+
+function formatClassification(classification) {
+  if (classification === 'general_access') return 'General Access'
+  if (classification === 'class_2') return 'Class 2'
+  if (classification === 'class_3') return 'Class 3'
+  if (classification === 'invalid_input') return 'Invalid Input'
+  if (classification === 'unknown') return 'Unknown'
+
+  return classification
+}
+
+async function resetVehicleTab() {
+  const savedLicence = selectedLicence.value
+
+  resetAfterLicence()
+
+  // Logged-in user: restore saved profile if available
+  if (loggedInUser.value?.licence_class_id) {
+    selectedLicence.value = loggedInUser.value.licence_class_id
+
+    await onLicenceChange()
+
+    if (loggedInUser.value.favourite_profile_id) {
+      const favouriteExists = profiles.value.some(
+        (profile) => profile.profile_id === loggedInUser.value.favourite_profile_id
+      )
+
+      if (favouriteExists) {
+        selectedProfileId.value = loggedInUser.value.favourite_profile_id
+        await onProfileChange()
+      }
+    }
+
+    return
+  }
+
+  // Guest user: keep selected licence, but clear vehicle/axle/mass selections
+  selectedLicence.value = savedLicence
+
+  if (selectedLicence.value) {
+    sessionStorage.setItem(GUEST_LICENCE_STORAGE_KEY, selectedLicence.value)
+    await onLicenceChange()
+  }
 }
 </script>
+
+<style scoped>
+.vehicle-tab-scroll {
+  max-height: calc(100vh - 130px);
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding-right: 4px;
+}
+</style>
