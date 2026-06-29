@@ -1,4 +1,4 @@
-from axle_configurations import axle_configurations
+from .axle_configurations import axle_configurations
 
 
 def find_axle_config(config_id: str):

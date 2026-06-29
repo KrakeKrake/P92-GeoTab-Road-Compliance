@@ -91,7 +91,7 @@ async function handleSignup() {
   message.value = ''
 
   try {
-    const res = await fetch('http://127.0.0.1:8000/auth/signup', {
+    const res = await fetch('/api/compliance/auth/signup', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',

@@ -2,7 +2,7 @@ from typing import Any, Dict, List
 
 from sqlalchemy.orm import Session
 
-from db_models import (
+from .db_models import (
     VehicleProfile,
     VehicleTemplate,
     TemplateQuestion,

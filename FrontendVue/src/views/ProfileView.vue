@@ -69,7 +69,7 @@
 import { onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 
-const API_BASE = 'http://127.0.0.1:8000'
+const API_BASE = '/api/compliance'
 
 const router = useRouter()
 
@@ -87,7 +87,13 @@ onMounted(async () => {
     return
   }
 
-  user.value = JSON.parse(storedUser)
+  try {
+    user.value = JSON.parse(storedUser)
+  } catch {
+    localStorage.removeItem('user')
+    router.push('/login')
+    return
+  }
 
   licenceClass.value = user.value.licence_class_id || ''
   favouriteProfileId.value = user.value.favourite_profile_id || ''
@@ -97,6 +103,20 @@ onMounted(async () => {
   }
 })
 
+async function readJsonSafely(res) {
+  const raw = await res.text()
+
+  if (!raw) return {}
+
+  try {
+    return JSON.parse(raw)
+  } catch {
+    return {
+      detail: raw,
+    }
+  }
+}
+
 async function onLicenceChange() {
   favouriteProfileId.value = ''
   await loadProfilesByLicence()
@@ -104,12 +124,18 @@ async function onLicenceChange() {
 
 async function loadProfilesByLicence() {
   profiles.value = []
+  message.value = ''
 
   if (!licenceClass.value) return
 
   try {
     const res = await fetch(`${API_BASE}/profiles-by-licence/${licenceClass.value}`)
-    const data = await res.json()
+    const data = await readJsonSafely(res)
+
+    if (!res.ok) {
+      message.value = data.detail || 'Failed to load vehicle profiles.'
+      return
+    }
 
     profiles.value = Array.isArray(data) ? data : []
   } catch (error) {
@@ -142,7 +168,7 @@ async function saveProfile() {
       }),
     })
 
-    const data = await res.json()
+    const data = await readJsonSafely(res)
 
     if (!res.ok) {
       message.value = data.detail || 'Failed to update profile.'
@@ -153,6 +179,9 @@ async function saveProfile() {
     window.dispatchEvent(new Event('auth-updated'))
 
     user.value = data.user
+    licenceClass.value = data.user.licence_class_id || ''
+    favouriteProfileId.value = data.user.favourite_profile_id || ''
+
     message.value = 'Profile updated successfully.'
   } catch (error) {
     message.value = `Failed to update profile: ${error}`
