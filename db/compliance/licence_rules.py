@@ -1,4 +1,4 @@
-from vehicle_profiles import vehicle_profiles
+from .vehicle_profiles import vehicle_profiles
 
 LICENCE_HIERARCHY = ["LR", "MR", "HR", "HC", "MC"]
 

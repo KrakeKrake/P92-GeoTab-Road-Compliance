@@ -298,7 +298,7 @@
 <script setup>
 import { computed, onMounted, ref } from 'vue'
 
-const API_BASE = 'http://127.0.0.1:8000'
+const API_BASE = '/api/compliance'
 
 const selectedLicence = ref('')
 const selectedProfileId = ref('')
@@ -317,10 +317,6 @@ const massLimits = ref([])
 const axleConfigDetails = ref(null)
 const dimensionRanges = ref(null)
 
-const applicableMassLimits = computed(() => {
-  return massLimits.value.filter((limit) => limit.applicable)
-})
-
 const operatingMass = ref(null)
 
 const useCustomDimensions = ref(false)
@@ -329,15 +325,44 @@ const customHeight = ref(null)
 const customLength = ref(null)
 
 const extraAnswers = ref({})
-
 const result = ref(null)
 const loggedInUser = ref(null)
+
+const profilesCache = ref({})
+const vehicleFormDataCache = ref({})
 
 const GUEST_LICENCE_STORAGE_KEY = 'guest_selected_licence_class'
 
 const isLoggedIn = computed(() => {
   return !!loggedInUser.value
 })
+
+const applicableMassLimits = computed(() => {
+  return massLimits.value.filter((limit) => limit.applicable)
+})
+
+async function timedFetchJson(label, url, options = undefined) {
+  console.time(label)
+
+  const res = await fetch(url, options)
+  const raw = await res.text()
+
+  console.timeEnd(label)
+
+  let data = {}
+
+  try {
+    data = raw ? JSON.parse(raw) : {}
+  } catch {
+    throw new Error(`${label} returned invalid JSON`)
+  }
+
+  if (!res.ok) {
+    throw new Error(data.detail || `${label} failed`)
+  }
+
+  return data
+}
 
 async function loadLoggedInUser() {
   const storedUser = localStorage.getItem('user')
@@ -380,6 +405,7 @@ async function loadLoggedInUser() {
     }
   }
 }
+
 onMounted(async () => {
   await loadLoggedInUser()
 })
@@ -398,10 +424,20 @@ async function onLicenceChange() {
   if (!selectedLicence.value) return
 
   try {
-    const res = await fetch(`${API_BASE}/profiles-by-licence/${selectedLicence.value}`)
-    const data = await res.json()
+    if (profilesCache.value[selectedLicence.value]) {
+      profiles.value = profilesCache.value[selectedLicence.value]
+      return
+    }
 
-    profiles.value = Array.isArray(data) ? data : []
+    const data = await timedFetchJson(
+      'VehicleTab: load profiles by licence',
+      `${API_BASE}/profiles-by-licence/${selectedLicence.value}`
+    )
+
+    const loadedProfiles = Array.isArray(data) ? data : []
+
+    profiles.value = loadedProfiles
+    profilesCache.value[selectedLicence.value] = loadedProfiles
   } catch (error) {
     result.value = {
       error: `Failed to load profiles: ${error}`,
@@ -423,6 +459,7 @@ function resetAfterLicence() {
   currentTemplate.value = null
   currentAxleConfig.value = null
   axleConfigDetails.value = null
+  dimensionRanges.value = null
 
   operatingMass.value = null
 
@@ -433,7 +470,6 @@ function resetAfterLicence() {
 
   extraAnswers.value = {}
   result.value = null
-  dimensionRanges.value = null
 }
 
 async function onProfileChange() {
@@ -462,21 +498,22 @@ async function onProfileChange() {
   if (!selectedProfileId.value) return
 
   try {
-    const profileRes = await fetch(`${API_BASE}/profiles/${selectedProfileId.value}`)
-    currentProfile.value = await profileRes.json()
+    let data = vehicleFormDataCache.value[selectedProfileId.value]
 
-    const templateRes = await fetch(`${API_BASE}/templates/${currentProfile.value.template_id}`)
-    currentTemplate.value = await templateRes.json()
+    if (!data) {
+      data = await timedFetchJson(
+        'VehicleTab: load vehicle form data',
+        `${API_BASE}/vehicle-form-data/${selectedProfileId.value}`
+      )
 
-    templateQuestions.value = currentTemplate.value.extra_questions || []
+      vehicleFormDataCache.value[selectedProfileId.value] = data
+    }
 
-    const rangeRes = await fetch(`${API_BASE}/dimension-ranges/${currentProfile.value.template_id}`)
-    dimensionRanges.value = await rangeRes.json()
-
-    const axleRes = await fetch(`${API_BASE}/axle-configs/${currentProfile.value.template_id}`)
-    const axleData = await axleRes.json()
-
-    axleConfigs.value = axleData.axle_configurations || []
+    currentProfile.value = data.profile
+    currentTemplate.value = data.template
+    dimensionRanges.value = data.dimension_ranges
+    axleConfigs.value = data.axle_configurations || []
+    templateQuestions.value = data.template?.extra_questions || []
   } catch (error) {
     result.value = {
       error: `Failed to load profile details: ${error}`,
@@ -495,17 +532,10 @@ async function onAxleChange() {
 
   if (!currentAxleConfig.value) return
 
-  try {
-    const res = await fetch(`${API_BASE}/axle-config-details/${currentAxleConfig.value.config_id}`)
-    const data = await res.json()
-
-    axleConfigDetails.value = data
-    massLimits.value = data.mass_limits || []
-  } catch (error) {
-    result.value = {
-      error: `Failed to load axle mass limits: ${error}`,
-    }
-  }
+  // No backend call here anymore.
+  // Mass limits are already loaded by /vehicle-form-data/<profile_id>.
+  axleConfigDetails.value = currentAxleConfig.value
+  massLimits.value = currentAxleConfig.value.mass_limits || []
 }
 
 function buildAnswers() {
@@ -544,15 +574,17 @@ async function classifyVehicle() {
     answers: buildAnswers(),
   }
 
-  const res = await fetch(`${API_BASE}/classify`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify(payload),
-  })
-
-  return await res.json()
+  return await timedFetchJson(
+    'VehicleTab: classify vehicle',
+    `${API_BASE}/classify`,
+    {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(payload),
+    }
+  )
 }
 
 async function validateMass() {
@@ -562,15 +594,40 @@ async function validateMass() {
     operating_mass_t: Number(operatingMass.value),
   }
 
-  const res = await fetch(`${API_BASE}/validate-mass`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify(payload),
-  })
+  return await timedFetchJson(
+    'VehicleTab: validate mass',
+    `${API_BASE}/validate-mass`,
+    {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(payload),
+    }
+  )
+}
 
-  return await res.json()
+async function classifyAndValidateVehicle() {
+  const payload = {
+    profile_id: currentProfile.value.profile_id,
+    axle_config_id: currentAxleConfig.value.config_id,
+    custom_dimensions: useCustomDimensions.value,
+    answers: buildAnswers(),
+    mass_scheme: selectedMassScheme.value,
+    operating_mass_t: Number(operatingMass.value),
+  }
+
+  return await timedFetchJson(
+    'VehicleTab: classify and validate',
+    `${API_BASE}/classify-and-validate`,
+    {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(payload),
+    }
+  )
 }
 
 async function classifyAndValidate() {
@@ -649,8 +706,10 @@ async function classifyAndValidate() {
   }
 
   try {
-    const classificationResult = await classifyVehicle()
-    const massValidationResult = await validateMass()
+    const combinedResult = await classifyAndValidateVehicle()
+
+    const classificationResult = combinedResult.classification_result
+    const massValidationResult = combinedResult.mass_validation_result
 
     result.value = {
       selected_licence_class: selectedLicence.value,
@@ -660,15 +719,15 @@ async function classifyAndValidate() {
       operating_mass_t: Number(operatingMass.value),
       dimensions_used: useCustomDimensions.value
         ? {
-          width_m: customWidth.value,
-          height_m: customHeight.value,
-          length_m: customLength.value,
-        }
+            width_m: customWidth.value,
+            height_m: customHeight.value,
+            length_m: customLength.value,
+          }
         : {
-          width_m: currentProfile.value.default_width_m,
-          height_m: currentProfile.value.default_height_m,
-          length_m: currentProfile.value.default_length_m,
-        },
+            width_m: currentProfile.value.default_width_m,
+            height_m: currentProfile.value.default_height_m,
+            length_m: currentProfile.value.default_length_m,
+          },
       classification_result: classificationResult,
       mass_validation_result: massValidationResult,
     }

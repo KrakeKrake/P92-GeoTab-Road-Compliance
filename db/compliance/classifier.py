@@ -1,9 +1,9 @@
 from typing import Any, Dict, List
 
-from vehicle_profiles import vehicle_profiles
-from vehicle_templates import vehicle_templates
+from .vehicle_profiles import vehicle_profiles
+from .vehicle_templates import vehicle_templates
 
-from axle_configurations import axle_configurations
+from .axle_configurations import axle_configurations
 GENERAL_WIDTH_LIMIT_M = 2.5
 GENERAL_HEIGHT_LIMIT_M = 4.3
 GENERAL_COMBINATION_LENGTH_LIMIT_M = 19.0
