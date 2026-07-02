@@ -4,3 +4,4 @@
 **/*.osm.pbf
 **/*.gpkg
 *venv/
+**/*__pycache__
