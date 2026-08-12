@@ -2,6 +2,7 @@ services:
   postgis:
     image: pgrouting/pgrouting:18-3.6-4.0
     container_name: ${DB_CONTAINER}
+    restart: unless-stopped
     environment:
       POSTGRES_DB: ${DB_NAME}
       POSTGRES_USER: ${DB_USER}
@@ -25,6 +26,19 @@ services:
       - postgis
     networks:
       - nhvr_compliance_default
+
+  valhalla:
+    image: ghcr.io/valhalla/valhalla-scripted:latest
+    restart: unless-stopped
+    user: 1000:1000
+    container_name: valhalla
+    ports:
+      - 8002:8002
+    networks:
+      - nhvr_compliance_default
+    volumes:
+      - ./valhalla_custom_files:/custom_files:Z
+      - ./gtfs_feeds:/gtfs_feeds:Z
 
 volumes:
   pgrouting_data:
