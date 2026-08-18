@@ -212,177 +212,215 @@ def validate_input_dimensions_from_db(
     return errors
 
 
-def classify_hvnl_from_db(
-    db: Session,
-    profile_id: str,
-    axle_config_id: str | None,
-    custom_dimensions: bool,
-    answers: Dict[str, Any]
-) -> Dict[str, Any]:
+from .db_models import (
+    VehicleProfile,
+    AxleConfiguration,
+    DimensionRule,
+)
 
-    profile = get_profile_from_db(db, profile_id)
+
+def get_number_from_answers(answers, possible_keys):
+    for key in possible_keys:
+        value = answers.get(key)
+        if value is not None and value != "":
+            try:
+                return float(value)
+            except (TypeError, ValueError):
+                return None
+
+    return None
+
+
+from .db_models import (
+    VehicleProfile,
+    AxleConfiguration,
+    DimensionRule,
+)
+
+
+def get_number_from_answers(answers, possible_keys):
+    for key in possible_keys:
+        value = answers.get(key)
+        if value is not None and value != "":
+            try:
+                return float(value)
+            except (TypeError, ValueError):
+                return None
+
+    return None
+
+
+def classify_hvnl_from_db(
+    db,
+    profile_id,
+    axle_config_id=None,
+    custom_dimensions=False,
+    answers=None,
+):
+    answers = answers or {}
+
+    profile = (
+        db.query(VehicleProfile)
+        .filter(VehicleProfile.profile_id == profile_id)
+        .first()
+    )
 
     if not profile:
         return {
             "status": "error",
             "classification": "unknown",
-            "reason": "Unsupported vehicle profile.",
-            "warnings": ["Vehicle profile not found."]
+            "reason": "Vehicle profile not found.",
+            "used_dimensions": {},
+            "missing_fields": ["profile_id"],
+            "warnings": [],
         }
 
-    template_id = profile.template_id
-    template = get_template_from_db(db, template_id)
-    selected_axle_config = find_axle_config_from_db(db, axle_config_id)
-
-    if not template:
-        return {
-            "status": "error",
-            "classification": "unknown",
-            "reason": "Vehicle template could not be resolved from profile.",
-            "warnings": ["Template not found."]
-        }
-
-    dimensions = resolve_dimensions_from_db(
-        db=db,
-        profile_id=profile_id,
-        custom_dimensions=custom_dimensions,
-        answers=answers
+    dimension_rule = (
+        db.query(DimensionRule)
+        .filter(DimensionRule.template_id == profile.template_id)
+        .first()
     )
-
-    validation_errors = validate_input_dimensions_from_db(
-        db=db,
-        template_id=template_id,
-        dimensions=dimensions
-    )
-
-    if validation_errors:
-        return {
-            "status": "error",
-            "classification": "invalid_input",
-            "reason": "Input dimensions are outside acceptable range.",
-            "used_dimensions": dimensions,
-            "missing_fields": [],
-            "warnings": validation_errors
-        }
-
-    missing_fields = get_missing_fields_from_db(
-        db=db,
-        profile_id=profile_id,
-        custom_dimensions=custom_dimensions,
-        answers=answers
-    )
-
-    if missing_fields:
-        return {
-            "status": "incomplete",
-            "classification": "unknown",
-            "reason": "More information is required before classification.",
-            "used_dimensions": dimensions,
-            "missing_fields": missing_fields,
-            "warnings": []
-        }
-
-    dimension_rule = get_dimension_rule_from_db(db, template_id)
 
     if not dimension_rule:
         return {
             "status": "error",
             "classification": "unknown",
-            "reason": "Dimension rule not found for this vehicle template.",
-            "used_dimensions": dimensions,
+            "reason": f"No dimension rule found for template {profile.template_id}.",
+            "used_dimensions": {},
             "missing_fields": [],
-            "warnings": ["Dimension rule coverage is incomplete."]
+            "warnings": [],
         }
 
-    width_m = dimensions["width_m"]
-    height_m = dimensions["height_m"]
-    length_m = dimensions["length_m"]
+    axle_config = None
+    if axle_config_id:
+        axle_config = (
+            db.query(AxleConfiguration)
+            .filter(AxleConfiguration.axle_config_id == axle_config_id)
+            .first()
+        )
 
+        if not axle_config:
+            return {
+                "status": "error",
+                "classification": "unknown",
+                "reason": "Axle configuration not found.",
+                "used_dimensions": {},
+                "missing_fields": ["axle_config_id"],
+                "warnings": [],
+            }
+
+    # Use selected axle config length when available.
+    # This fixes B-double 7 axle = 19 m, while 8/9 axle = 26 m.
     selected_length_limit_m = (
-        float(selected_axle_config.max_length_m)
-        if selected_axle_config
+        float(axle_config.max_length_m)
+        if axle_config and axle_config.max_length_m is not None
         else float(dimension_rule.length_limit_m)
     )
 
-    limit_check = evaluate_limits(
-        width_m=width_m,
-        height_m=height_m,
-        length_m=length_m,
-        width_limit_m=float(dimension_rule.width_limit_m),
-        height_limit_m=float(dimension_rule.height_limit_m),
-        length_limit_m=selected_length_limit_m
-    )
+    width_limit_m = float(dimension_rule.width_limit_m)
+    height_limit_m = float(dimension_rule.height_limit_m)
+    length_limit_m = selected_length_limit_m
 
-    warnings: List[str] = []
+    if custom_dimensions:
+        width_m = get_number_from_answers(
+            answers,
+            ["width_m", "overall_width_m", "custom_width_m", "width"],
+        )
 
-    if template_id == "B_DOUBLE":
-        pbs_vehicle = _safe_bool(answers.get("pbs_vehicle"))
-        if pbs_vehicle:
-            warnings.append("PBS flag noted. Detailed PBS handling is not implemented yet.")
+        height_m = get_number_from_answers(
+            answers,
+            ["height_m", "overall_height_m", "custom_height_m", "height"],
+        )
 
-    if limit_check["exceeds"]:
-        if template_id == "RIGID_TRUCK":
-            reason = (
-                "The rigid truck exceeds common general prescribed limits and does not fall "
-                "under the current Class 1 or Class 2 paths."
-            )
-        elif template_id == "PM_SEMI":
-            reason = (
-                "The prime mover and semitrailer combination exceeds common general prescribed "
-                "limits and does not fall under the current Class 1 or Class 2 paths."
-            )
-        elif template_id == "B_DOUBLE":
-            reason = (
-                "The B-double exceeds the prototype limits applied to this Class 2 category. "
-                "Under the current prototype logic, it is flagged as Class 3 for further compliance review."
-            )
+        length_m = get_number_from_answers(
+            answers,
+            ["length_m", "overall_length_m", "custom_length_m", "length"],
+        )
+
+        missing_fields = []
+
+        if width_m is None:
+            missing_fields.append("width_m")
+
+        if height_m is None:
+            missing_fields.append("height_m")
+
+        if length_m is None:
+            missing_fields.append("length_m")
+
+        if missing_fields:
+            return {
+                "status": "error",
+                "classification": "unknown",
+                "reason": "Custom dimensions are enabled but some dimension values are missing.",
+                "used_dimensions": {},
+                "missing_fields": missing_fields,
+                "warnings": [],
+            }
+
+    else:
+        width_m = float(profile.default_width_m)
+        height_m = float(profile.default_height_m)
+
+        # Important: for configurable vehicles, default length should follow selected axle config.
+        if axle_config and axle_config.max_length_m is not None:
+            length_m = float(axle_config.max_length_m)
         else:
-            reason = "The vehicle exceeds the configured dimension limits."
+            length_m = float(profile.default_length_m)
 
+    warnings = []
+
+    if width_m > width_limit_m:
+        warnings.append(
+            f"Width {width_m} m exceeds limit of {width_limit_m} m."
+        )
+
+    if height_m > height_limit_m:
+        warnings.append(
+            f"Height {height_m} m exceeds limit of {height_limit_m} m."
+        )
+
+    if length_m > length_limit_m:
+        warnings.append(
+            f"Length {length_m} m exceeds selected axle configuration limit of {length_limit_m} m."
+        )
+
+    used_dimensions = {
+        "width_m": width_m,
+        "height_m": height_m,
+        "length_m": length_m,
+        "width_limit_m": width_limit_m,
+        "height_limit_m": height_limit_m,
+        "length_limit_m": length_limit_m,
+        "selected_axle_config_id": axle_config.axle_config_id if axle_config else None,
+        "selected_axle_config_display_name": axle_config.display_name if axle_config else None,
+    }
+
+    if warnings:
         return {
             "status": "ok",
-            "classification": dimension_rule.classification_if_exceeded_limit,
-            "reason": reason,
-            "used_dimensions": dimensions,
+            "classification": dimension_rule.classification_if_exceeded_limit or "class_3",
+            "reason": "One or more vehicle dimensions exceed the configured dimension rule or selected axle configuration limit.",
+            "used_dimensions": used_dimensions,
             "missing_fields": [],
-            "warnings": limit_check["reasons"] + warnings
+            "warnings": warnings,
         }
 
-    if template_id == "RIGID_TRUCK":
+    if axle_config:
         return {
             "status": "ok",
-            "classification": "general_access",
-            "reason": "The rigid truck is within common general limits.",
-            "used_dimensions": dimensions,
+            "classification": axle_config.access_path,
+            "reason": f"Vehicle complies with the configured dimension rule and selected axle configuration limit for {profile.display_name}.",
+            "used_dimensions": used_dimensions,
             "missing_fields": [],
-            "warnings": warnings
-        }
-
-    if template_id == "PM_SEMI":
-        return {
-            "status": "ok",
-            "classification": "general_access",
-            "reason": "The prime mover and semitrailer combination is within common general limits.",
-            "used_dimensions": dimensions,
-            "missing_fields": [],
-            "warnings": warnings
-        }
-
-    if template_id == "B_DOUBLE":
-        return {
-            "status": "ok",
-            "classification": "class_2",
-            "reason": "The B-double follows the Class 2 path under the current prototype rules.",
-            "used_dimensions": dimensions,
-            "missing_fields": [],
-            "warnings": warnings
+            "warnings": [],
         }
 
     return {
-        "status": "error",
-        "classification": "unknown",
-        "reason": "No classification rule matched this vehicle template.",
-        "used_dimensions": dimensions,
+        "status": "ok",
+        "classification": "general_access",
+        "reason": f"Vehicle complies with the configured dimension rule for {profile.display_name}.",
+        "used_dimensions": used_dimensions,
         "missing_fields": [],
-        "warnings": ["Rule coverage is incomplete for this vehicle type."]
+        "warnings": [],
     }

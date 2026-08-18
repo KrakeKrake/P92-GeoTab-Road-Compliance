@@ -13,6 +13,8 @@
 
       <template v-else>
         <button @click="goProfile">Configure Profile</button>
+        <button @click="goAddVehicle">Add Vehicle Type</button>
+        <button @click="goEditVehicle">Edit Vehicle Type</button>
         <button @click="signOut">Sign out</button>
       </template>
     </div>
@@ -91,6 +93,16 @@ function goSignup() {
 function goProfile() {
   closeMenu()
   router.push('/profile')
+}
+
+function goAddVehicle() {
+  menuOpen.value = false
+  router.push('/admin/add-vehicle')
+}
+
+function goEditVehicle() {
+  menuOpen.value = false
+  router.push('/admin/edit-vehicle')
 }
 
 function signOut() {
