@@ -1,7 +1,5 @@
-from sqlalchemy import Boolean, Column, ForeignKey, Integer, Numeric, Text
+from sqlalchemy import Boolean, Column, ForeignKey, Integer, Numeric, Text, TIMESTAMP
 from .database import Base
-from sqlalchemy import Column, Integer, Text, TIMESTAMP, ForeignKey
-
 
 class LicenceClass(Base):
     __tablename__ = "licence_classes"
@@ -61,6 +59,22 @@ class AxleConfiguration(Base):
     access_path = Column(Text, nullable=False)
     note = Column(Text)
 
+
+class AxleGroupMass(Base):
+    __tablename__ = "axle_group_masses"
+    __table_args__ = {"schema": "compliance"}
+
+    axle_group_mass_id = Column(Integer, primary_key=True, index=True)
+
+    axle_config_id = Column(
+        Text,
+        ForeignKey("compliance.axle_configurations.axle_config_id"),
+        nullable=False
+    )
+
+    group_order = Column(Integer, nullable=False)
+    mass_t = Column(Numeric(5, 2), nullable=False)
+    
 class VehicleProfile(Base):
     __tablename__ = "vehicle_profiles"
     __table_args__ = {"schema": "compliance"}
@@ -98,6 +112,14 @@ class VehicleProfile(Base):
         ForeignKey("compliance.licence_classes.licence_class_id"),
         nullable=False
     )
+
+class MassScheme(Base):
+    __tablename__ = "mass_schemes"
+    __table_args__ = {"schema": "compliance"}
+
+    mass_scheme_id = Column(Text, primary_key=True, index=True)
+    display_name = Column(Text, nullable=False)
+    description = Column(Text)
 
 class AxleConfigMassLimit(Base):
     __tablename__ = "axle_config_mass_limits"
