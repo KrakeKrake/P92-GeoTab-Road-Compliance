@@ -1,7 +1,9 @@
-/* HeavyRoute Navigation UI — Stylesheet
- * Dimitrios Moros — EAT40005
+﻿/* HeavyRoute Navigation UI -- Stylesheet
+ * Dimitrios Moros -- EAT40005
  * Separated from navigation_ui.html
  */
+
+@import url('https://fonts.googleapis.com/css2?family=Dela+Gothic+One&display=swap');
 
 :root {
   --bg:           #ffffff;
@@ -29,7 +31,7 @@
 html, body { height: 100%; overflow: hidden; }
 body { font-family: var(--sans); background: var(--bg); color: var(--text); display: flex; flex-direction: column; }
 
-/* Vue mounts into #app — must fill full viewport */
+/* Vue mounts into #app -- must fill full viewport */
 #app {
   height: 100vh;
   display: flex;
@@ -37,7 +39,10 @@ body { font-family: var(--sans); background: var(--bg); color: var(--text); disp
   overflow: hidden;
 }
 
-/* ── TOP BAR ── */
+/* MainView uses Vue fragment, so header + .main are direct flex children of #app */
+.main { flex: 1; display: flex; overflow: hidden; min-height: 0; position: relative; }
+
+/* -- TOP BAR -- */
 .topbar {
   height: 52px;
   background: #ffffff;
@@ -51,10 +56,10 @@ body { font-family: var(--sans); background: var(--bg); color: var(--text); disp
   z-index: 100;
 }
 .logo {
-  font-family: var(--display);
-  font-weight: 800;
+  font-family: 'Dela Gothic One', sans-serif;
+  font-weight: 400;
   font-size: 17px;
-  color: var(--accent);
+  color: #000000;
   letter-spacing: -0.5px;
   display: flex;
   align-items: center;
@@ -62,21 +67,6 @@ body { font-family: var(--sans); background: var(--bg); color: var(--text); disp
 }
 
 .topbar-sep { width: 1px; height: 24px; background: var(--border); }
-.status-pill {
-  font-family: var(--mono);
-  font-size: 11px;
-  padding: 3px 10px;
-  border-radius: 20px;
-  background: rgba(26,115,232,0.08);
-  color: var(--accent);
-  border: 1px solid rgba(26,115,232,0.2);
-  display: flex; align-items: center; gap: 5px;
-}
-.status-dot {
-  width: 6px; height: 6px;
-  border-radius: 50%;
-  background: var(--accent);
-}
 .topbar-right { margin-left: auto; display: flex; align-items: center; gap: 10px; }
 .user-chip {
   display: flex; align-items: center; gap: 8px;
@@ -94,12 +84,10 @@ body { font-family: var(--sans); background: var(--bg); color: var(--text); disp
   display: flex; align-items: center; justify-content: center;
   font-size: 10px; font-weight: 700; color: #ffffff;
   font-family: var(--display);
+  overflow: hidden;
 }
 
-/* ── MAIN LAYOUT ── */
-.main { flex: 1; display: flex; overflow: hidden; min-height: 0; }
-
-/* ── MAP ── */
+/* -- MAP -- */
 .map-area { flex: 1; position: relative; overflow: hidden; background: #f0ebe3; min-height: 0; }
 #map { position: absolute; inset: 0; width: 100%; height: 100%; }
 .map-attr {
@@ -114,7 +102,7 @@ body { font-family: var(--sans); background: var(--bg); color: var(--text); disp
   z-index: 10;
 }
 
-/* ── MAP EMPTY STATE ── */
+/* -- MAP EMPTY STATE -- */
 .map-empty {
   position: absolute; inset: 0;
   display: flex; flex-direction: column;
@@ -125,18 +113,16 @@ body { font-family: var(--sans); background: var(--bg); color: var(--text); disp
 }
 .map-empty-icon { font-size: 40px; opacity: 0.3; }
 .map-empty-text { font-family: var(--mono); font-size: 12px; }
-
-/* ── SIDE PANEL ── */
+/* -- SIDE PANEL — permanent left sidebar -- */
 .panel {
   width: var(--panel-w);
+  flex-shrink: 0;
   background: #ffffff;
-  border-left: 1px solid var(--border);
-  box-shadow: -2px 0 8px rgba(0,0,0,0.06);
+  border-right: 1px solid var(--border);
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  flex-shrink: 0;
-  min-height: 0;
+  z-index: 50;
 }
 
 /* ── TABS ── */
@@ -459,4 +445,33 @@ body { font-family: var(--sans); background: var(--bg); color: var(--text); disp
   position: absolute; top: 42px; left: 50%; transform: translateX(-50%);
   background: var(--danger); color: white; font-family: var(--mono);
   font-size: 10px; padding: 2px 8px; border-radius: 4px; white-space: nowrap;
+}
+
+/* ── USER LOCATION MARKER (MapLibre injects this outside Vue scope) ── */
+.user-location-dot {
+  width: 18px;
+  height: 18px;
+  background: #4285f4;
+  border: 3px solid #ffffff;
+  border-radius: 50%;
+  box-shadow: 0 2px 8px rgba(66, 133, 244, 0.5);
+  position: relative;
+  cursor: default;
+}
+.user-location-dot::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 36px;
+  height: 36px;
+  margin-left: -18px;
+  margin-top: -18px;
+  background: rgba(66, 133, 244, 0.2);
+  border-radius: 50%;
+  animation: location-pulse 2s ease-in-out infinite;
+}
+@keyframes location-pulse {
+  0%, 100% { transform: scale(0.6); opacity: 0.8; }
+  50%       { transform: scale(1);   opacity: 0.1; }
 }

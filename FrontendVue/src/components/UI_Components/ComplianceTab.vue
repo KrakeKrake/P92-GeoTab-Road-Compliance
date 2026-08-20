@@ -1,6 +1,13 @@
 <template>
   <div>
 
+    <!-- Progress steps -->
+    <div class="steps">
+      <div class="step done"><span class="step-num">1</span>Route</div>
+      <div class="step done"><span class="step-num">2</span>Vehicle</div>
+      <div class="step active"><span class="step-num">3</span>Check</div>
+    </div>
+
     <!-- Compliance report — populated by Sprint 3 POST /validate response -->
     <template v-if="report">
 
@@ -55,7 +62,7 @@
 
     <!-- Empty state -->
     <div v-else class="empty-state">
-      <div class="empty-state-icon">✅</div>
+
       <div class="empty-state-title">No compliance report yet</div>
       <div class="empty-state-sub">
         Plan a route and select a vehicle to generate a compliance report against NHVR regulations.
