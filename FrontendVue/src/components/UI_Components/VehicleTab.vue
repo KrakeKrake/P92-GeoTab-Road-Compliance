@@ -1,5 +1,12 @@
 <template>
   <div class="vehicle-tab-scroll">
+    <!-- Progress steps -->
+    <div class="steps">
+      <div class="step done"><span class="step-num">1</span>Route</div>
+      <div class="step active"><span class="step-num">2</span>Vehicle</div>
+      <div class="step"><span class="step-num">3</span>Check</div>
+    </div>
+
     <!-- Licence Class -->
     <div class="section-label">Licence Class</div>
     <div class="select-row">
@@ -283,7 +290,7 @@
     <!-- Empty state -->
     <div v-if="!selectedLicence" id="vehiclePlaceholder">
       <div class="empty-state" style="margin-top:12px">
-        <div class="empty-state-icon">🚛</div>
+
         <div class="empty-state-title">{{ isLoggedIn ? 'No vehicle selected' : 'Guest mode' }}</div>
         <div class="empty-state-sub">
           {{ isLoggedIn

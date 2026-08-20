@@ -4,16 +4,22 @@ import maplibregl from "maplibre-gl";
 import { getRoute } from "../../scripts/api.ts";
 import type { wayPoint } from "../../scripts/api.ts";
 
+const props = defineProps<{
+    waypoints?: wayPoint[];
+}>();
+
 const mapContainer = ref<HTMLElement | null>(null);
 const route = ref<wayPoint[]>([]);
 const osm_id_1 = ref<number | null>(null);
 const osm_id_2 = ref<number | null>(null);
 const loading = ref(false);
 const error = ref<string | null>(null);
+const userLngLat = ref<[number, number] | null>(null);
 
 let map: maplibregl.Map | null = null;
 let mapLoaded = false;
 let popup: maplibregl.Popup | null = null;
+let userMarker: maplibregl.Marker | null = null;
 
 const TAG_NAMES: Record<number, string> = {
     101: "motorway",
@@ -59,9 +65,7 @@ function buildFeatureCollection(waypoints: wayPoint[]) {
 
 function updateMapSource(waypoints: wayPoint[]) {
     if (!map || !mapLoaded) return;
-    const source = map.getSource("route") as
-        | maplibregl.GeoJSONSource
-        | undefined;
+    const source = map.getSource("route") as maplibregl.GeoJSONSource | undefined;
     if (!source) return;
 
     source.setData(buildFeatureCollection(waypoints));
@@ -77,6 +81,37 @@ function updateMapSource(waypoints: wayPoint[]) {
         );
         map.fitBounds(bounds, { padding: 60, maxZoom: 16 });
     }
+}
+
+function locateUser() {
+    if (!navigator.geolocation) return;
+    navigator.geolocation.getCurrentPosition(
+        (pos) => {
+            const coords: [number, number] = [pos.coords.longitude, pos.coords.latitude];
+            userLngLat.value = coords;
+
+            if (userMarker) {
+                userMarker.setLngLat(coords);
+            } else {
+                const el = document.createElement("div");
+                el.className = "user-location-dot";
+                userMarker = new maplibregl.Marker({ element: el, anchor: "center" })
+                    .setLngLat(coords)
+                    .addTo(map!);
+            }
+
+            map?.flyTo({ center: coords, zoom: 13, duration: 1500 });
+        },
+        (err) => {
+            console.warn("Geolocation unavailable:", err.message);
+        },
+        { enableHighAccuracy: true, timeout: 10000 }
+    );
+}
+
+function flyToUser() {
+    if (!userLngLat.value || !map) return;
+    map.flyTo({ center: userLngLat.value, zoom: 14, duration: 1000 });
 }
 
 onMounted(() => {
@@ -141,12 +176,21 @@ onMounted(() => {
         if (route.value.length > 0) {
             updateMapSource(toRaw(route.value));
         }
+
+        locateUser();
     });
 });
 
 watch(route, (newRoute) => {
     updateMapSource(toRaw(newRoute));
 });
+
+// When parent passes new waypoints, update the map
+watch(() => props.waypoints, (newWaypoints) => {
+    if (newWaypoints && newWaypoints.length > 0) {
+        route.value = newWaypoints;
+    }
+}, { deep: true });
 
 async function onSubmitOSM() {
     if (osm_id_1.value === null || osm_id_2.value === null) {
@@ -184,22 +228,46 @@ async function onSubmitOSM() {
             </button>
             <span v-if="error" class="map-error">{{ error }}</span>
         </div>
-        <div ref="mapContainer" class="map-container" />
+
+        <div class="map-outer">
+            <div ref="mapContainer" class="map-container" />
+            <button
+                class="locate-btn"
+                :class="{ 'locate-active': userLngLat }"
+                :title="userLngLat ? 'Return to my location' : 'Waiting for location…'"
+                @click="flyToUser"
+            >
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <circle cx="12" cy="12" r="8"/>
+                    <line x1="12" y1="2" x2="12" y2="6"/>
+                    <line x1="12" y1="18" x2="12" y2="22"/>
+                    <line x1="2" y1="12" x2="6" y2="12"/>
+                    <line x1="18" y1="12" x2="22" y2="12"/>
+                    <circle cx="12" cy="12" r="3" fill="currentColor"/>
+                </svg>
+            </button>
+        </div>
     </div>
 </template>
 
 <style scoped>
 .map-wrapper {
+    flex: 1;
+    min-width: 0;
     display: flex;
     flex-direction: column;
-    height: 100%;
 }
+
 .map-controls {
+    display: none;
+}
+.map-controls-hidden {
     display: flex;
     gap: 8px;
     align-items: center;
     padding: 8px;
     background: #1a1a2e;
+    flex-shrink: 0;
 }
 .map-controls input {
     padding: 6px 10px;
@@ -225,9 +293,47 @@ async function onSubmitOSM() {
     color: #ff6b6b;
     font-size: 0.85rem;
 }
-.map-container {
+
+.map-outer {
     flex: 1;
-    min-height: 500px;
-    width: 600px;
+    position: relative;
+    min-height: 0;
+}
+
+.map-container {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+}
+
+.locate-btn {
+    position: absolute;
+    right: 10px;
+    bottom: 80px;
+    z-index: 10;
+    width: 36px;
+    height: 36px;
+    background: #ffffff;
+    border: none;
+    border-radius: 4px;
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.25);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+    color: #9aa0a6;
+    transition: background 0.15s, color 0.15s;
+}
+.locate-btn:hover {
+    background: #f8f9fa;
+    color: #5f6368;
+}
+.locate-btn.locate-active {
+    color: #1a73e8;
+}
+.locate-btn.locate-active:hover {
+    background: rgba(26, 115, 232, 0.08);
 }
 </style>

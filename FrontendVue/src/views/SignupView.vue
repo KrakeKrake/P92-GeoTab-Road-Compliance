@@ -1,6 +1,7 @@
 <template>
   <main class="auth-page">
     <section class="auth-card">
+      <button class="auth-close" @click="router.push('/')" title="Back to dashboard">&times;</button>
       <div class="logo auth-logo">HeavyRoute</div>
 
       <div class="status-pill auth-pill">
@@ -143,6 +144,32 @@ function goLogin() {
   border-radius: var(--radius);
   box-shadow: 0 8px 24px rgba(0,0,0,0.08);
   padding: 28px;
+  position: relative;
+}
+
+.auth-close {
+  position: absolute;
+  top: 14px;
+  right: 14px;
+  width: 28px;
+  height: 28px;
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  font-size: 18px;
+  line-height: 1;
+  color: var(--text3);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  transition: background 0.15s, color 0.15s;
+}
+
+.auth-close:hover {
+  background: var(--surface2);
+  color: var(--text);
 }
 
 .auth-logo {
