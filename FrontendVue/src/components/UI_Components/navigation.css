@@ -3,31 +3,6 @@
  * Separated from navigation_ui.html
  */
 
-@import url('https://fonts.googleapis.com/css2?family=Dela+Gothic+One&display=swap');
-
-:root {
-  --bg:           #ffffff;
-  --surface:      #ffffff;
-  --surface2:     #f8f9fa;
-  --border:       #e0e0e0;
-  --border2:      #d0d0d0;
-  --accent:       #1a73e8;
-  --accent-glow:  rgba(26,115,232,0.08);
-  --warn:         #f9ab00;
-  --danger:       #d93025;
-  --danger-dim:   rgba(217,48,37,0.10);
-  --warn-dim:     rgba(249,171,0,0.10);
-  --text:         #202124;
-  --text2:        #5f6368;
-  --text3:        #9aa0a6;
-  --mono:         'DM Mono', monospace;
-  --sans:         'DM Sans', sans-serif;
-  --display:      'Syne', sans-serif;
-  --radius:       10px;
-  --panel-w:      400px;
-}
-
-* { box-sizing: border-box; margin: 0; padding: 0; }
 html, body { height: 100%; overflow: hidden; }
 body { font-family: var(--sans); background: var(--bg); color: var(--text); display: flex; flex-direction: column; }
 

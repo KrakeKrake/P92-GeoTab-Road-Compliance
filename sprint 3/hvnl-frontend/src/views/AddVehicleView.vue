@@ -9,14 +9,9 @@
         </p>
       </div>
 
-      <div style="display:flex;gap:10px">
-        <button class="secondary-btn" type="button" @click="resetForm">
-          Clear Form
-        </button>
-        <button class="secondary-btn" type="button" @click="router.push('/dashboard')">
-          ← Dashboard
-        </button>
-      </div>
+      <button class="secondary-btn" type="button" @click="resetForm">
+        Clear Form
+      </button>
     </section>
 
     <form class="form-stack" @submit.prevent="submitVehicle">
@@ -511,9 +506,6 @@
 
 <script setup>
 import { ref } from 'vue'
-import { useRouter } from 'vue-router'
-
-const router = useRouter()
 
 const API_BASE = '/api/compliance'
 
