@@ -178,8 +178,6 @@ export default {
       destSuggestions:   [],
       userLat:           null,
       userLon:           null,
-      originTimer:       null,
-      destTimer:         null,
     }
   },
 
@@ -231,15 +229,13 @@ export default {
     },
 
     onOriginInput() {
-      this.originCoords = null;  // coords no longer valid — user is editing manually
-      clearTimeout(this.originTimer);
-      this.originTimer = setTimeout(() => this.fetchSuggestions(this.origin, 'origin'), 300);
+      this.originCoords = null;
+      this.fetchSuggestions(this.origin, 'origin');
     },
 
     onDestInput() {
-      this.destCoords = null;    // coords no longer valid — user is editing manually
-      clearTimeout(this.destTimer);
-      this.destTimer = setTimeout(() => this.fetchSuggestions(this.destination, 'dest'), 300);
+      this.destCoords = null;
+      this.fetchSuggestions(this.destination, 'dest');
     },
 
     async fetchSuggestions(query, field) {
