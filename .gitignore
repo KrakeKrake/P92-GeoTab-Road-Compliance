@@ -5,3 +5,4 @@
 **/*.gpkg
 *venv/
 **/*__pycache__
+**/.zed
