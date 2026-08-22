@@ -9,9 +9,14 @@
         </p>
       </div>
 
-      <button class="secondary-btn" type="button" @click="clearSelection">
-        Clear Selection
-      </button>
+      <div style="display:flex;gap:10px">
+        <button class="secondary-btn" type="button" @click="clearSelection">
+          Clear Selection
+        </button>
+        <button class="secondary-btn" type="button" @click="router.push('/dashboard')">
+          ← Dashboard
+        </button>
+      </div>
     </section>
 
     <section class="card">
@@ -415,6 +420,9 @@
 
 <script setup>
 import { onMounted, ref } from 'vue'
+import { useRouter } from 'vue-router'
+
+const router = useRouter()
 
 const API_BASE = '/api/compliance'
 

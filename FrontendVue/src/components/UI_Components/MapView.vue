@@ -3,7 +3,7 @@
     <div ref="mapContainer" class="map-container"></div>
 
     <div v-if="!routeGeojson" class="map-empty">
-      <div class="map-empty-icon">🗺️</div>
+
       <div class="map-empty-text">Enter origin and destination to plan a route</div>
     </div>
 
@@ -75,7 +75,7 @@ export default {
         if (!v.coordinates) return
         const el = document.createElement('div')
         el.className = 'violation-map-marker'
-        el.textContent = '⚠'
+        el.textContent = '!'
         new maplibregl.Marker({ element: el })
           .setLngLat(v.coordinates)
           .setPopup(new maplibregl.Popup({ offset: 20 }).setHTML(`<strong>${v.road_name}</strong><br>${v.detail}`))

@@ -1,7 +1,10 @@
 <template>
   <div class="user-chip-wrapper" ref="userChipRef">
     <div class="user-chip" @click="toggleMenu">
-      <div class="user-avatar">{{ userInitial }}</div>
+      <div class="user-avatar">
+        <img v-if="!isLoggedIn" src="/avatar.png" alt="avatar" class="avatar-img" />
+        <span v-else>{{ userInitial }}</span>
+      </div>
       <span>{{ userLabel }}</span>
     </div>
 
@@ -136,6 +139,14 @@ onUnmounted(() => {
 <style scoped>
 .user-chip-wrapper {
   position: relative;
+}
+
+.avatar-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border-radius: 50%;
+  display: block;
 }
 
 .user-menu {

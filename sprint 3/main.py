@@ -469,6 +469,144 @@ def login_user(request: LoginRequest, db: Session = Depends(get_db)):
         )
     )
 
+@app.get("/vehicle-form-data/{profile_id}")
+def get_vehicle_form_data(profile_id: str, db: Session = Depends(get_db)):
+    profile = db.query(VehicleProfile).filter(VehicleProfile.profile_id == profile_id).first()
+    if not profile:
+        raise HTTPException(status_code=404, detail="Vehicle profile not found.")
+
+    template = db.query(VehicleTemplate).filter(VehicleTemplate.template_id == profile.template_id).first()
+    questions = db.query(TemplateQuestion).filter(TemplateQuestion.template_id == profile.template_id).all()
+    axle_configs = db.query(AxleConfiguration).filter(AxleConfiguration.template_id == profile.template_id).all()
+    dimension_ranges = db.query(InputSanityRange).filter(InputSanityRange.template_id == profile.template_id).first()
+
+    axle_configs_with_limits = []
+    for config in axle_configs:
+        mass_limits = db.query(AxleConfigMassLimit).filter(AxleConfigMassLimit.axle_config_id == config.axle_config_id).all()
+        axle_configs_with_limits.append({
+            "config_id": config.axle_config_id,
+            "display_name": config.display_name,
+            "max_length_m": float(config.max_length_m),
+            "access_path": config.access_path,
+            "note": config.note,
+            "mass_limits": [
+                {
+                    "mass_scheme_id": limit.mass_scheme_id,
+                    "mass_limit_t": float(limit.mass_limit_t) if limit.mass_limit_t is not None else None,
+                    "applicable": limit.mass_limit_t is not None
+                }
+                for limit in mass_limits
+            ]
+        })
+
+    return {
+        "profile": {
+            "profile_id": profile.profile_id,
+            "display_name": profile.display_name,
+            "template_id": profile.template_id,
+            "vehicle_family": profile.vehicle_family,
+            "combination_type": profile.combination_type,
+            "gvm_category": profile.gvm_category,
+            "axle_count": profile.axle_count,
+            "axle_configurable": profile.axle_configurable,
+            "default_width_m": float(profile.default_width_m),
+            "default_height_m": float(profile.default_height_m),
+            "default_length_m": float(profile.default_length_m),
+            "allow_custom_dimensions": profile.allow_custom_dimensions,
+        },
+        "template": {
+            "vehicle_id": template.template_id,
+            "display_name": template.template_name,
+            "base_type": template.base_type,
+            "extra_questions": [
+                {"name": q.question_name, "type": q.question_type, "label": q.question_label}
+                for q in questions
+            ]
+        } if template else None,
+        "dimension_ranges": {
+            "template_id": dimension_ranges.template_id,
+            "min_width_m": float(dimension_ranges.min_width_m),
+            "max_width_m": float(dimension_ranges.max_width_m),
+            "min_height_m": float(dimension_ranges.min_height_m),
+            "max_height_m": float(dimension_ranges.max_height_m),
+            "min_length_m": float(dimension_ranges.min_length_m),
+            "max_length_m": float(dimension_ranges.max_length_m),
+        } if dimension_ranges else None,
+        "axle_configurations": axle_configs_with_limits,
+    }
+
+
+class ClassifyAndValidateRequest(BaseModel):
+    profile_id: str
+    axle_config_id: str
+    custom_dimensions: bool
+    answers: dict
+    mass_scheme: str
+    operating_mass_t: float
+
+
+@app.post("/classify-and-validate")
+def classify_and_validate(request: ClassifyAndValidateRequest, db: Session = Depends(get_db)):
+    profile = db.query(VehicleProfile).filter(VehicleProfile.profile_id == request.profile_id).first()
+    if not profile:
+        raise HTTPException(status_code=404, detail="Vehicle profile not found.")
+
+    classification_result = classify_hvnl_from_db(
+        db=db,
+        profile_id=request.profile_id,
+        axle_config_id=request.axle_config_id,
+        custom_dimensions=request.custom_dimensions,
+        answers=request.answers
+    )
+
+    mass_scheme = request.mass_scheme.upper()
+    mass_limit = db.query(AxleConfigMassLimit).filter(
+        AxleConfigMassLimit.axle_config_id == request.axle_config_id,
+        AxleConfigMassLimit.mass_scheme_id == mass_scheme
+    ).first()
+
+    if not mass_limit:
+        mass_validation_result = {"status": "error", "compliant": False, "reason": "Invalid mass scheme. Use GML, CML, or HML."}
+    elif mass_limit.mass_limit_t is None:
+        mass_validation_result = {
+            "status": "not_applicable",
+            "compliant": False,
+            "reason": f"{mass_scheme} does not apply to this axle configuration.",
+            "selected_limit_t": None
+        }
+    else:
+        limit = float(mass_limit.mass_limit_t)
+        if request.operating_mass_t <= limit:
+            mass_validation_result = {
+                "status": "ok",
+                "compliant": True,
+                "reason": f"Operating mass {request.operating_mass_t} t is within {mass_scheme} limit of {limit} t.",
+                "selected_limit_t": limit
+            }
+        else:
+            mass_validation_result = {
+                "status": "exceeds_limit",
+                "compliant": False,
+                "reason": f"Operating mass {request.operating_mass_t} t exceeds {mass_scheme} limit of {limit} t.",
+                "selected_limit_t": limit
+            }
+
+    return {
+        "classification_result": {
+            "profile_id": request.profile_id,
+            "display_name": profile.display_name,
+            "template_id": profile.template_id,
+            "status": classification_result.get("status", "error"),
+            "classification": classification_result.get("classification", "unknown"),
+            "reason": classification_result.get("reason", "No reason provided."),
+            "used_dimensions": classification_result.get("used_dimensions", {}),
+            "missing_fields": classification_result.get("missing_fields", []),
+            "warnings": classification_result.get("warnings", [])
+        },
+        "mass_validation_result": mass_validation_result
+    }
+
+
 @app.put("/auth/users/{user_id}/profile", response_model=AuthResponse)
 def update_user_profile(
     user_id: int,
