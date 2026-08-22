@@ -1,0 +1,95 @@
+# Builds Valhalla from source
+# Includes the scripted entrypoint that auto-builds tiles from PBF on first start.
+# Combination of Dockerfile and Dockerfile-scripted.
+# Compiles local source, and provides the correct endpoints.
+
+FROM ubuntu:24.04 AS builder
+LABEL org.opencontainers.image.authors="104559959@studnet.swin.edu.au"
+
+ENV PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:$PATH"
+ENV LD_LIBRARY_PATH="/usr/local/lib:/lib/x86_64-linux-gnu:/usr/lib/x86_64-linux-gnu:/lib32:/usr/lib32"
+RUN export DEBIAN_FRONTEND=noninteractive && apt update && apt install -y sudo
+
+### All of the build stuff, mostly taken from online
+
+WORKDIR /src/valhalla
+COPY scripts/install-linux-deps.sh scripts/install-linux-deps.sh
+RUN bash ./scripts/install-linux-deps.sh
+
+COPY cmake cmake/
+COPY date_time/ date_time/
+COPY locales/ locales/
+COPY lua/ lua/
+COPY proto/ proto/
+COPY scripts/ scripts/
+COPY src/ src/
+COPY third_party/ third_party/
+COPY valhalla/ valhalla/
+COPY CMakeLists.txt .
+COPY libvalhalla.pc.in .
+COPY LICENSE.md .
+COPY CHANGELOG.md .
+COPY COPYING .
+COPY README.md .
+COPY test/test.h test/
+COPY test/test.cc test/
+COPY test/gurka/gurka.h test/gurka/
+COPY test/gurka/gurka.cc test/gurka/
+COPY test/tile_server.h test/
+COPY test/tile_server.cc test/
+COPY test/CMakeLists.txt test/
+
+ARG CONCURRENCY
+ARG BUILD_TYPE
+ARG VERSION_MODIFIER=""
+
+RUN cmake -B build -DCMAKE_BUILD_TYPE=${BUILD_TYPE-"Release"} -DCMAKE_C_COMPILER=gcc -DENABLE_TESTS=Off \
+  -DENABLE_SINGLE_FILES_WERROR=Off -DVALHALLA_VERSION_MODIFIER=${VERSION_MODIFIER} -DINSTALL_TEST_LIB=Off && \
+  make -C build all -j${CONCURRENCY:-$(nproc)} && \
+  make -C build install
+
+WORKDIR /usr/local/src
+RUN echo "$VERSION_MODIFIER" > /usr/local/valhalla_version && \
+  for f in /src/valhalla/locales/*.json; do cat ${f} | python3 -c 'import sys; import json; print(json.load(sys.stdin)["posix_locale"])'; done > valhalla_locales
+
+###################################################################
+FROM ubuntu:24.04 AS runner
+LABEL org.opencontainers.image.authors="104559959@studnet.swin.edu.au"
+LABEL org.opencontainers.image.description="Valhalla but with NHVR"
+LABEL org.opencontainers.image.source="local"
+
+ENV PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:$PATH"
+ENV LD_LIBRARY_PATH="/usr/local/lib:/lib/x86_64-linux-gnu:/usr/lib/x86_64-linux-gnu:/lib32:/usr/lib32"
+
+RUN export DEBIAN_FRONTEND=noninteractive && apt update && \
+  apt install -y libluajit-5.1-2 libgeotiff5 \
+  libzmq5 libczmq4 spatialite-bin libprotobuf-lite32 sudo locales \
+  libsqlite3-0 libsqlite3-mod-spatialite libcurl4 \
+  python3.12-minimal python3-requests python3-shapely python-is-python3 \
+  curl unzip moreutils jq && \
+  rm -rf /var/lib/apt/lists/*
+
+COPY --from=builder /usr/local /usr/local
+COPY docker/scripts/. /valhalla/scripts
+
+# default expected env vars
+ENV use_tiles_ignore_pbf=True
+ENV build_tar=True
+ENV serve_tiles=True
+ENV update_existing_config=True
+ENV force_rebuild=False
+ENV path_extension=""
+ENV build_admins=True
+ENV build_time_zones=True
+ENV build_elevation=False
+ENV build_transit=False
+ENV use_default_speeds_config=True
+ENV traffic_name=""
+ENV default_speeds_config_url="https://raw.githubusercontent.com/OpenStreetMapSpeeds/schema/master/default_speeds.json"
+
+WORKDIR /custom_files
+
+# Expose the necessary port
+EXPOSE 8002
+ENTRYPOINT ["/valhalla/scripts/docker-entrypoint.sh"]
+CMD ["build_tiles"]

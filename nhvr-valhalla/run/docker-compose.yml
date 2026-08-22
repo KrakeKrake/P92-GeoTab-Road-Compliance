@@ -1,0 +1,30 @@
+services:
+  valhalla:
+    build:
+      context: /home/krake/Sync/Work/Uni/EAT40006/valhalla
+      dockerfile: docker/Dockerfile-nhvr
+    image: valhalla:nhvr
+    container_name: valhalla-nhvr
+    restart: unless-stopped
+    ports:
+      - "8002:8002"
+    volumes:
+      - ./custom_files:/custom_files:z
+    environment:
+      - serve_tiles=True
+      - build_admins=True
+      - build_time_zones=True
+      - build_tar=True
+      - force_rebuild=True
+      - update_existing_config=True
+      - LOGGING_LEVEL=DEBUG
+  nginx-cors:
+    image: nginx:alpine
+    container_name: valhalla-cors
+    restart: unless-stopped
+    depends_on:
+      - valhalla
+    ports:
+      - "8003:80"
+    volumes:
+      - ./nginx.conf:/etc/nginx/conf.d/default.conf:z
