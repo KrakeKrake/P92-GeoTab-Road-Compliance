@@ -125,8 +125,8 @@ const BaseCostingOptionsConfig kBaseCostOptsConfig = GetBaseCostOptsConfig();
  * Derived class providing dynamic edge costing for truck routes.
  */
 class TruckCost : public DynamicCost {
+  // This will be populated by the nhvr networks that apply.
   std::unordered_set<std::string> nhvr_networks_;
-
 public:
   /**
    * Construct truck costing. Pass in cost type and costing_options using protocol buffer(pbf).
@@ -395,6 +395,7 @@ TruckCost::TruckCost(const Costing& costing)
   no_hgv_access_penalty_ = no_hgv_access_penalty_active * costing_options.hgv_no_access_penalty();
   // set the access mask to both car & truck if that penalty is active
   access_mask_ = no_hgv_access_penalty_active ? (kAutoAccess | kTruckAccess) : kTruckAccess;
+  // Populate the nhvr networks from the request
   for (const auto& network : costing_options.nhvr_networks()) {
     nhvr_networks_.insert(network);
   }

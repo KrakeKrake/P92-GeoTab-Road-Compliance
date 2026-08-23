@@ -139,6 +139,7 @@ message Costing {
     // This is about the INPUT api request.
     // It basically says that it can take in a list of NHVR networks to use for this request.
     // Each network is a string identifier for the NHVR network to use.
+    // So that edges that are listed are used in routing (or prohibited so to speak)
     repeated string nhvr_networks = 98;
     oneof has_maneuver_penalty {
       float maneuver_penalty = 1;

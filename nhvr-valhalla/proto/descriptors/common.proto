@@ -5,8 +5,8 @@ package valhalla;
 // Proto files are like the schema for an API.
 // Message is like a C++ struct
 // So what this does is define a message of type NHVRNetwork
-// Which returns the name of a network and it's status
-// I think the integers are something to do with the order? Not sure...
+// Which declares the name of a network and it's status
+// The intergers are unique IDs for each field, important for serialisation
 message NHVRNetwork {
   string name = 1;
   string status = 2; // "approved", "conditional", or "prohibited"
@@ -93,10 +93,10 @@ message PathEdge {
   float heading = 13;
 
   message BoundingCircle {
-    uint32 radius = 1; 
+    uint32 radius = 1;
     LatLng latlng = 2;
-  } 
-  
+  }
+
   BoundingCircle bounding_circle = 14;
 }
 
@@ -435,7 +435,6 @@ message Summary {
 
 message LevelChange {
   uint32 shape_index = 1;
-  float level = 2; 
+  float level = 2;
   uint32 precision = 3;
 }
-

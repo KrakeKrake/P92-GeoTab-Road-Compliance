@@ -560,7 +560,12 @@ void legs(valhalla::Api& api, int route_index, rapidjson::writer_wrapper_t& writ
       // “portionsUnpavedNote” : “<portionsUnpavedNote>”,
       // “gateAccessRequiredNote” : “<gateAccessRequiredNote>”,
       // “checkFerryInfoNote” : “<checkFerryInfoNote>”
-      std::map<std::string, std::string> nhvr_aggregated; // name → worst status
+
+      // Part of the serialisation for maneuvers, aggregates NHVR networks across the maneuver.
+      // Say that one maneuver contains edges with different nhvr statuses.
+      // Edge 123 is approved, but 124 is conditional.
+      // The aggregated status for this maneuver will be "conditional".
+      std::map<std::string, std::string> nhvr_aggregated;
       for (uint32_t i = maneuver.begin_path_index(); i < maneuver.end_path_index(); ++i) {
         for (const auto& network : trip_leg_itr->node(i).edge().nhvr_networks()) {
           auto it = nhvr_aggregated.find(network.name());
@@ -571,6 +576,8 @@ void legs(valhalla::Api& api, int route_index, rapidjson::writer_wrapper_t& writ
           }
         }
       }
+      // If there are NHVR networks, add them to the output
+      // Simply as a list of name/status pairs
       if (!nhvr_aggregated.empty()) {
         writer.start_array("nhvr_networks");
         for (const auto& [name, status] : nhvr_aggregated) {

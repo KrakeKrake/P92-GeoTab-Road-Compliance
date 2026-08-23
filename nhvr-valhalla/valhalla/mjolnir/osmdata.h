@@ -73,6 +73,7 @@ using OSMStringMap = std::unordered_map<uint64_t, uint32_t>;
  */
 struct OSMData {
   // This will store the NHVR network values for each way.
+  // It is a string because it holds the "raw" Name:Status|... string
   std::unordered_map<uint64_t, std::string> nhvr_networks_;
   /**
    * Write data to temporary files.

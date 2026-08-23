@@ -728,7 +728,7 @@ bool OSMData::write_to_temp_files(const std::string& tile_dir) {
       write_linguistic(tile_dir + pronunciation_file, pronunciations) &&
       write_linguistic(tile_dir + language_file, langs) &&
       write_conditional_speed_limits(tile_dir + conditional_speed_limit_file, conditional_speeds) &&
-      write_nhvr_networks(tile_dir + nhvr_networks_file, nhvr_networks_);
+      write_nhvr_networks(tile_dir + nhvr_networks_file, nhvr_networks_); // Write to temp file
   LOG_INFO("Done");
   return status;
 }
@@ -779,7 +779,7 @@ bool OSMData::read_from_temp_files(const std::string& tile_dir) {
       read_linguistic(tile_directory + pronunciation_file, pronunciations) &&
       read_linguistic(tile_directory + language_file, langs) &&
       read_conditional_speed_limits(tile_directory + conditional_speed_limit_file, conditional_speeds) &&
-      read_nhvr_networks(tile_directory + nhvr_networks_file, nhvr_networks_);
+      read_nhvr_networks(tile_directory + nhvr_networks_file, nhvr_networks_); // Read from temp file
   LOG_INFO("Done");
   initialized = status;
   return status;
@@ -853,7 +853,7 @@ void OSMData::cleanup_temp_files(const std::string& tile_dir) {
   remove_temp_file(tile_dir + pronunciation_file);
   remove_temp_file(tile_dir + language_file);
   remove_temp_file(tile_dir + conditional_speed_limit_file);
-  remove_temp_file(tile_dir + nhvr_networks_file);
+  remove_temp_file(tile_dir + nhvr_networks_file); // Dont forget to remove the temp files for nhvr as well
 }
 
 } // namespace mjolnir

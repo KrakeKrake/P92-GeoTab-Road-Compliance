@@ -188,8 +188,8 @@ struct graph_parser {
     empty_node_tags_ = lua_.Transform(OSMType::kNode, 0, {});
     empty_relation_tags_ = lua_.Transform(OSMType::kRelation, 0, {});
 
-    // after py script adds a nhvr_network tag to ways
-    // we look for that same tag on the ways to find them.
+    // after py script adds a nhvr_networks tag to ways
+    // we look for that same tag on the ways so GraphBuilder can use it.
     tag_handlers_["nhvr_networks"] = [this]() {
       osmdata_.nhvr_networks_[way_.way_id()] = tag_.second;
     };

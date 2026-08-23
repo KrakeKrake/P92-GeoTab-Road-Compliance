@@ -28,7 +28,7 @@ message DirectionsLeg {
   message Maneuver {
     // Represents the NHVR networks associated with this maneuver
     // As defined in the common.proto file.
-    // 42 because it is the next available field "tag" (basically random)
+    // 42 because it is the next available field "tag"
     // Just defines that when we return manuvers we also can return NHVR networks.
     // Hence repeated.
     repeated NHVRNetwork nhvr_networks = 42;
