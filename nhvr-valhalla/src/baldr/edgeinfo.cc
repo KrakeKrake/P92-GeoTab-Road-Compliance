@@ -562,7 +562,8 @@ std::vector<NHVRNetworkEntry> EdgeInfo::nhvr_networks() const {
   if (it == tags.end()) return result;
 
   // To Parse "NetworkName:status|NetworkName|status"
-  // Skip the first byte (tag identifier) in the string
+  // GetTags() already strips the tag byte, so `raw` is "Name:0|Name:2"
+  // (name, then numeric status: 0 approved, 1 conditional, 2 prohibited).
   const std::string& raw = it->second;
   //  split on '|', then split each part on ':' for the key value pair
   std::stringstream ss(raw);
@@ -612,7 +613,7 @@ void EdgeInfo::json(rapidjson::writer_wrapper_t& writer) const {
   std::vector<std::pair<std::string, uint64_t>> conditional_speed_limits;
   for (const auto& [tag, value] : GetTags()) {
     switch (tag) {
-      case TaggedValue::kNHVRNetwork:
+      case TaggedValue::kNHVRNetwork: // Filter out NHVR network tags for JSON output
         break;
       case TaggedValue::kLayer:
         break;

@@ -1,0 +1,541 @@
+diff --git a/proto/descriptors/common.proto b/proto/descriptors/common.proto
+index a47877182..6da2506c2 100644
+--- a/proto/descriptors/common.proto
++++ b/proto/descriptors/common.proto
+@@ -2,6 +2,16 @@ syntax = "proto3";
+ option optimize_for = LITE_RUNTIME;
+ package valhalla;
+ 
++// Proto files are like the schema for an API.
++// Message is like a C++ struct
++// So what this does is define a message of type NHVRNetwork
++// Which declares the name of a network and it's status
++// The intergers are unique IDs for each field, important for serialisation
++message NHVRNetwork {
++  string name = 1;
++  string status = 2; // "approved", "conditional", or "prohibited"
++}
++
+ message LatLng {
+   oneof has_lat {
+     double lat = 1;
+@@ -83,10 +93,10 @@ message PathEdge {
+   float heading = 13;
+ 
+   message BoundingCircle {
+-    uint32 radius = 1; 
++    uint32 radius = 1;
+     LatLng latlng = 2;
+-  } 
+-  
++  }
++
+   BoundingCircle bounding_circle = 14;
+ }
+ 
+@@ -425,7 +435,6 @@ message Summary {
+ 
+ message LevelChange {
+   uint32 shape_index = 1;
+-  float level = 2; 
++  float level = 2;
+   uint32 precision = 3;
+ }
+-
+diff --git a/proto/descriptors/directions.proto b/proto/descriptors/directions.proto
+index 1347b2b74..f3a66b018 100644
+--- a/proto/descriptors/directions.proto
++++ b/proto/descriptors/directions.proto
+@@ -26,6 +26,12 @@ message DirectionsLeg {
+   }
+ 
+   message Maneuver {
++    // Represents the NHVR networks associated with this maneuver
++    // As defined in the common.proto file.
++    // 42 because it is the next available field "tag"
++    // Just defines that when we return manuvers we also can return NHVR networks.
++    // Hence repeated.
++    repeated NHVRNetwork nhvr_networks = 42;
+     enum CardinalDirection {
+       kNorth = 0;
+       kNorthEast = 1;
+diff --git a/proto/descriptors/options.proto b/proto/descriptors/options.proto
+index e77e3a3ee..fca1b6561 100644
+--- a/proto/descriptors/options.proto
++++ b/proto/descriptors/options.proto
+@@ -136,6 +136,11 @@ message Costing {
+   }
+ 
+   message Options {
++    // This is about the INPUT api request.
++    // It basically says that it can take in a list of NHVR networks to use for this request.
++    // Each network is a string identifier for the NHVR network to use.
++    // So that edges that are listed are used in routing (or prohibited so to speak)
++    repeated string nhvr_networks = 98;
+     oneof has_maneuver_penalty {
+       float maneuver_penalty = 1;
+     }
+diff --git a/proto/descriptors/trip.proto b/proto/descriptors/trip.proto
+index 9bf0cdf11..a70853425 100644
+--- a/proto/descriptors/trip.proto
++++ b/proto/descriptors/trip.proto
+@@ -164,6 +164,11 @@ message TripLeg {
+   }
+ 
+   message Edge {
++    // The NHVR networks that this edge belongs to.
++    // The type is defined in common.proto
++    // Each represents a network on that edge, multiple
++    //  networks per edge in some cases
++    repeated NHVRNetwork nhvr_networks = 72;
+     repeated StreetName name = 1;           // street names
+     float length_km = 2;           // km
+     float speed = 3;               // km/h
+diff --git a/src/baldr/attributes_controller.cc b/src/baldr/attributes_controller.cc
+index 86c800da7..a3ce4eb60 100644
+--- a/src/baldr/attributes_controller.cc
++++ b/src/baldr/attributes_controller.cc
+@@ -36,6 +36,8 @@ PrecomputeEnabledCategories(const std::unordered_map<std::string_view, bool>& at
+  */
+ const std::unordered_map<std::string_view, bool> AttributesController::kDefaultAttributes = {
+     // Edge keys
++    {kEdgeNHVRNetworks, false},  // opt-in only (request via filters.attributes)
++    // Just not included in the default return
+     {kEdgeNames, true},
+     {kEdgeLength, true},
+     {kEdgeSpeed, true},
+diff --git a/src/baldr/edgeinfo.cc b/src/baldr/edgeinfo.cc
+index e039ec21e..217f20f74 100644
+--- a/src/baldr/edgeinfo.cc
++++ b/src/baldr/edgeinfo.cc
+@@ -5,6 +5,8 @@
+ #include "midgard/logging.h"
+ #include "midgard/util.h"
+ 
++#include <cstring>
++#include <sstream>
+ #include <vector>
+ 
+ using namespace valhalla::baldr;
+@@ -112,6 +114,8 @@ std::pair<std::vector<std::pair<float, float>>, uint32_t> decode_levels(const st
+ 
+ size_t EdgeInfo::TaggedValueSize(const char* ptr) {
+   switch (static_cast<TaggedValue>(ptr[0])) {
++    case TaggedValue::kNHVRNetwork:
++      return strlen(ptr) + 1; // +1 for null terminator
+     case TaggedValue::kLayer:
+     case TaggedValue::kBssInfo:
+     case TaggedValue::kLevel:
+@@ -551,6 +555,34 @@ std::vector<uint64_t> EdgeInfo::osm_node_ids() const {
+   } catch (...) { throw std::runtime_error("failed to decode osm node ids"); };
+ }
+ 
++std::vector<NHVRNetworkEntry> EdgeInfo::nhvr_networks() const {
++  std::vector<NHVRNetworkEntry> result;
++  auto tags = GetTags();
++  auto it = tags.find(TaggedValue::kNHVRNetwork);
++  if (it == tags.end()) return result;
++
++  // To Parse "NetworkName:status|NetworkName|status"
++  // GetTags() already strips the tag byte, so `raw` is "Name:0|Name:2"
++  // (name, then numeric status: 0 approved, 1 conditional, 2 prohibited).
++  const std::string& raw = it->second;
++  //  split on '|', then split each part on ':' for the key value pair
++  std::stringstream ss(raw);
++  std::string item;
++  while (std::getline(ss, item, '|')) {
++    std::stringstream item_ss(item);
++    std::string name;
++    std::string status_str;
++    std::getline(item_ss, name, ':');
++    std::getline(item_ss, status_str, ':');
++    NHVRNetworkEntry entry;
++    entry.name = name;
++    entry.status = static_cast<NHVRNetworkEntry::Status>(std::stoi(status_str));
++    result.push_back(entry);
++  }
++
++  return result;
++}
++
+ void EdgeInfo::json(rapidjson::writer_wrapper_t& writer) const {
+   writer("way_id", static_cast<uint64_t>(wayid()));
+ 
+@@ -581,6 +613,8 @@ void EdgeInfo::json(rapidjson::writer_wrapper_t& writer) const {
+   std::vector<std::pair<std::string, uint64_t>> conditional_speed_limits;
+   for (const auto& [tag, value] : GetTags()) {
+     switch (tag) {
++      case TaggedValue::kNHVRNetwork: // Filter out NHVR network tags for JSON output
++        break;
+       case TaggedValue::kLayer:
+         break;
+       case TaggedValue::kLinguistic:
+diff --git a/src/mjolnir/graphbuilder.cc b/src/mjolnir/graphbuilder.cc
+index 92f0d098d..1ed8d07ff 100644
+--- a/src/mjolnir/graphbuilder.cc
++++ b/src/mjolnir/graphbuilder.cc
+@@ -921,6 +921,18 @@ void BuildTileSet(const std::string& ways_file,
+                               tunnel_index, tunnel_lang_index, names.size(), tagged_values,
+                               linguistics, type, diff_names);
+ 
++            // For each edge that is being built, we need to look up it's
++            // way ID in the NHVR networks map
++            // If found, append the NHVR network as a tagged value
++            // This is where per way data is attached to per edge data.
++            auto nhvr_it = osmdata.nhvr_networks_.find(w.way_id());
++            if (nhvr_it != osmdata.nhvr_networks_.end()) {
++              std::string value;
++              value += static_cast<char>(TaggedValue::kNHVRNetwork);
++              value += nhvr_it->second; // the raw "Network:status|Network:status" string
++              tagged_values.push_back(std::move(value));
++            }
++
+             // Append conditional limits as tagged values
+             const auto cond_limits_range = osmdata.conditional_speeds.equal_range(w.way_id());
+             for (auto it = cond_limits_range.first; it != cond_limits_range.second; ++it) {
+diff --git a/src/mjolnir/osmdata.cc b/src/mjolnir/osmdata.cc
+index eb4c0bd4a..b81468663 100644
+--- a/src/mjolnir/osmdata.cc
++++ b/src/mjolnir/osmdata.cc
+@@ -30,6 +30,7 @@ const std::string lane_connectivity_file = "osmdata_lane_connectivity.bin";
+ const std::string pronunciation_file = "osmdata_pronunciation_file.bin";
+ const std::string language_file = "osmdata_language_file.bin";
+ const std::string conditional_speed_limit_file = "osmdata_conditional_speed_limit_file.bin";
++const std::string nhvr_networks_file = "osmdata_nhvr_networks.bin";
+ 
+ // Data structures to assist writing and reading data
+ struct TempRestriction {
+@@ -623,6 +624,64 @@ bool read_conditional_speed_limits(const std::string& filename,
+   return true;
+ }
+ 
++// To serialise the nhvr networks to a binary file.
++bool write_nhvr_networks(const std::string& filename,
++                         const std::unordered_map<uint64_t, std::string>& networks) {
++  // These options force it to, in order: Enable output, force binary, write fresh
++  std::ofstream file(filename.c_str(), std::ios::out | std::ios::binary | std::ios::trunc);
++  // If failed to open, log an error and return false
++  if (!file.is_open()) {
++    LOG_ERROR("write_nhvr_networks failed to open output file: " + filename);
++    return false;
++  }
++
++  // Write the number of networks into 4 bytes
++  // I LOVE memory management.
++  // Reinterpret cast converts the size to a char pointer before writing
++  uint32_t nhvr_network_size = networks.size();
++  file.write(reinterpret_cast<const char*>(&nhvr_network_size), sizeof(uint32_t));
++
++  // Write the network data, for each network in the map
++  // Each network is written as a way_id (8 bytes) followed by a length (4 bytes) and then the data
++  for (const auto& [way_id, value] : networks) {
++    file.write(reinterpret_cast<const char*>(&way_id), sizeof(uint64_t));
++    uint32_t len = value.size();
++    file.write(reinterpret_cast<const char*>(&len), sizeof(uint32_t));
++    file.write(value.data(), len);
++  }
++  file.close();
++  return true;
++}
++
++// Read the NHVR networks to a map of way_id to the network value
++bool read_nhvr_networks(const std::string& filename,
++                        std::unordered_map<uint64_t, std::string>& networks) {
++  std::ifstream file(filename, std::ios::in | std::ios::binary);
++
++  if (!file.is_open()) {
++    LOG_ERROR("read_nhvr_networks failed to open input file: " + filename);
++    return false;
++  }
++
++  // Read the number of networks that we are going to have
++  uint32_t count = 0;
++  file.read(reinterpret_cast<char*>(&count), sizeof(uint32_t));
++
++  // Cool C++ shorthand, equivalent to "for (uint32_t i = 0; i < count; i++)"
++  while (count--) {
++    // Read in the way id and the length of the network
++    uint64_t way_id;
++    file.read(reinterpret_cast<char*>(&way_id), sizeof(uint64_t));
++    uint32_t len;
++    file.read(reinterpret_cast<char*>(&len), sizeof(uint32_t));
++    std::string value(len, '\0');
++    file.read(value.data(), len);
++    networks[way_id] = std::move(value);
++  }
++  file.close();
++  return true;
++}
++
+ } // namespace
+ 
+ namespace valhalla {
+@@ -668,7 +727,8 @@ bool OSMData::write_to_temp_files(const std::string& tile_dir) {
+       write_lane_connectivity(tile_dir + lane_connectivity_file, lane_connectivity_map) &&
+       write_linguistic(tile_dir + pronunciation_file, pronunciations) &&
+       write_linguistic(tile_dir + language_file, langs) &&
+-      write_conditional_speed_limits(tile_dir + conditional_speed_limit_file, conditional_speeds);
++      write_conditional_speed_limits(tile_dir + conditional_speed_limit_file, conditional_speeds) &&
++      write_nhvr_networks(tile_dir + nhvr_networks_file, nhvr_networks_); // Write to temp file
+   LOG_INFO("Done");
+   return status;
+ }
+@@ -718,7 +778,8 @@ bool OSMData::read_from_temp_files(const std::string& tile_dir) {
+       read_lane_connectivity(tile_directory + lane_connectivity_file, lane_connectivity_map) &&
+       read_linguistic(tile_directory + pronunciation_file, pronunciations) &&
+       read_linguistic(tile_directory + language_file, langs) &&
+-      read_conditional_speed_limits(tile_directory + lane_connectivity_file, conditional_speeds);
++      read_conditional_speed_limits(tile_directory + conditional_speed_limit_file, conditional_speeds) &&
++      read_nhvr_networks(tile_directory + nhvr_networks_file, nhvr_networks_); // Read from temp file
+   LOG_INFO("Done");
+   initialized = status;
+   return status;
+@@ -792,6 +853,7 @@ void OSMData::cleanup_temp_files(const std::string& tile_dir) {
+   remove_temp_file(tile_dir + pronunciation_file);
+   remove_temp_file(tile_dir + language_file);
+   remove_temp_file(tile_dir + conditional_speed_limit_file);
++  remove_temp_file(tile_dir + nhvr_networks_file); // Dont forget to remove the temp files for nhvr as well
+ }
+ 
+ } // namespace mjolnir
+diff --git a/src/mjolnir/pbfgraphparser.cc b/src/mjolnir/pbfgraphparser.cc
+index 1189fcd2d..8b59d9298 100644
+--- a/src/mjolnir/pbfgraphparser.cc
++++ b/src/mjolnir/pbfgraphparser.cc
+@@ -188,6 +188,12 @@ struct graph_parser {
+     empty_node_tags_ = lua_.Transform(OSMType::kNode, 0, {});
+     empty_relation_tags_ = lua_.Transform(OSMType::kRelation, 0, {});
+ 
++    // after py script adds a nhvr_networks tag to ways
++    // we look for that same tag on the ways so GraphBuilder can use it.
++    tag_handlers_["nhvr_networks"] = [this]() {
++      osmdata_.nhvr_networks_[way_.way_id()] = tag_.second;
++    };
++
+     tag_handlers_["driving_side"] = [this]() {
+       if (!use_admin_db_) {
+         way_.set_drive_on_right(tag_.second == "right" ? true : false);
+diff --git a/src/mjolnir/util.cc b/src/mjolnir/util.cc
+index 2db810f64..ece3b8d29 100644
+--- a/src/mjolnir/util.cc
++++ b/src/mjolnir/util.cc
+@@ -709,7 +709,7 @@ bool build_tile_set(const boost::property_tree::ptree& original_config,
+   std::string old_to_new_bin = tile_dir + old_to_new_file;
+ 
+   // OSMData class
+-  OSMData osm_data{0};
++  OSMData osm_data{};
+ 
+   // Parse the ways
+   if (start_stage <= BuildStage::kParseWays && BuildStage::kParseWays <= end_stage) {
+diff --git a/src/sif/truckcost.cc b/src/sif/truckcost.cc
+index fc212217b..f31e55a57 100644
+--- a/src/sif/truckcost.cc
++++ b/src/sif/truckcost.cc
+@@ -1,3 +1,4 @@
++#include "midgard/logging.h"
+ #include "sif/truckcost.h"
+ #include "baldr/accessrestriction.h"
+ #include "baldr/directededge.h"
+@@ -124,6 +125,8 @@ const BaseCostingOptionsConfig kBaseCostOptsConfig = GetBaseCostOptsConfig();
+  * Derived class providing dynamic edge costing for truck routes.
+  */
+ class TruckCost : public DynamicCost {
++  // This will be populated by the nhvr networks that apply.
++  std::unordered_set<std::string> nhvr_networks_;
+ public:
+   /**
+    * Construct truck costing. Pass in cost type and costing_options using protocol buffer(pbf).
+@@ -392,6 +395,10 @@ TruckCost::TruckCost(const Costing& costing)
+   no_hgv_access_penalty_ = no_hgv_access_penalty_active * costing_options.hgv_no_access_penalty();
+   // set the access mask to both car & truck if that penalty is active
+   access_mask_ = no_hgv_access_penalty_active ? (kAutoAccess | kTruckAccess) : kTruckAccess;
++  // Populate the nhvr networks from the request
++  for (const auto& network : costing_options.nhvr_networks()) {
++    nhvr_networks_.insert(network);
++  }
+ }
+ 
+ // Destructor
+@@ -471,6 +478,18 @@ inline bool TruckCost::Allowed(const baldr::DirectedEdge* edge,
+       (exclude_unpaved_ && !pred.unpaved() && edge->unpaved()) || CheckExclusions<true>(edge, pred)) {
+     return false;
+   }
++  // If the nhvr networks are not empty, then:
++  // check that the edge's nhvr network is not prohibited
++  // If it is prohibited, dont allow the edge
++  // Only for the networks in the request
++  if (!nhvr_networks_.empty()) {
++    auto edgeinfo = tile->edgeinfo(edge);
++    for (const auto& entry : edgeinfo.nhvr_networks()) {
++      if (entry.status == NHVRNetworkEntry::kProhibited && nhvr_networks_.count(entry.name)) {
++        return false;
++      }
++    }
++  }
+ 
+   return DynamicCost::EvaluateRestrictions(access_mask_, edge, is_dest, tile, edgeid, current_time,
+                                            tz_index, restriction_idx, destonly_access_restr_mask);
+@@ -497,6 +516,15 @@ bool TruckCost::AllowedReverse(const baldr::DirectedEdge* edge,
+       CheckExclusions<false>(opp_edge, pred)) {
+     return false;
+   }
++  // Same as above but for "reverse" which all routers seem to have
++  if (!nhvr_networks_.empty()) {
++    auto edgeinfo = tile->edgeinfo(opp_edge);
++    for (const auto& entry : edgeinfo.nhvr_networks()) {
++      if (entry.status == NHVRNetworkEntry::kProhibited && nhvr_networks_.count(entry.name)) {
++        return false;
++      }
++    }
++  }
+ 
+   return DynamicCost::EvaluateRestrictions(access_mask_, opp_edge, false, tile, opp_edgeid,
+                                            current_time, tz_index, restriction_idx,
+@@ -743,6 +771,12 @@ void ParseTruckCostOptions(const rapidjson::Document& doc,
+ 
+   rapidjson::Value dummy;
+   const auto& json = rapidjson::get_child(doc, costing_options_key.c_str(), dummy);
++  // If the data has nhvr networks, add them to the cost options
++  if (json.HasMember("nhvr_networks")) {
++    for (const auto& n : json["nhvr_networks"].GetArray()) {
++      co->add_nhvr_networks(n.GetString());
++    }
++  }
+ 
+   ParseBaseCostOptions(json, c, kBaseCostOptsConfig, warnings);
+   JSON_PBF_RANGED_DEFAULT(co, kLowClassPenaltyRange, json, "/low_class_penalty", low_class_penalty,
+diff --git a/src/thor/triplegbuilder.cc b/src/thor/triplegbuilder.cc
+index 3809fdb83..bf3d4acb3 100644
+--- a/src/thor/triplegbuilder.cc
++++ b/src/thor/triplegbuilder.cc
+@@ -1622,6 +1622,22 @@ TripLeg_Edge* AddTripEdge(const AttributesController& controller,
+     trip_edge->set_truck_route(true);
+   }
+ 
++  // If we have NHVR networks, set the name
++  // and status of that edge accordingly
++  // The set status is basically a case
++  if (controller(kEdgeNHVRNetworks)) {
++    auto networks = edgeinfo.nhvr_networks();
++    for (const auto& n : networks) {
++      auto* pb_network = trip_edge->add_nhvr_networks();
++      pb_network->set_name(n.name);
++      pb_network->set_status(n.status == NHVRNetworkEntry::kApproved
++                                 ? "approved"
++                             : n.status == NHVRNetworkEntry::kConditional
++                                 ? "conditional"
++                                 : "prohibited");
++    }
++  }
++
+   /////////////////////////////////////////////////////////////////////////////
+   // Process transit information
+   if (edge_itr->trip_id && (directededge->use() == Use::kRail || directededge->use() == Use::kBus)) {
+diff --git a/src/tyr/route_serializer_valhalla.cc b/src/tyr/route_serializer_valhalla.cc
+index 1e0857a6e..546b68bd2 100644
+--- a/src/tyr/route_serializer_valhalla.cc
++++ b/src/tyr/route_serializer_valhalla.cc
+@@ -561,6 +561,33 @@ void legs(valhalla::Api& api, int route_index, rapidjson::writer_wrapper_t& writ
+       // “gateAccessRequiredNote” : “<gateAccessRequiredNote>”,
+       // “checkFerryInfoNote” : “<checkFerryInfoNote>”
+ 
++      // Part of the serialisation for maneuvers, aggregates NHVR networks across the maneuver.
++      // Say that one maneuver contains edges with different nhvr statuses.
++      // Edge 123 is approved, but 124 is conditional.
++      // The aggregated status for this maneuver will be "conditional".
++      std::map<std::string, std::string> nhvr_aggregated;
++      for (uint32_t i = maneuver.begin_path_index(); i < maneuver.end_path_index(); ++i) {
++        for (const auto& network : trip_leg_itr->node(i).edge().nhvr_networks()) {
++          auto it = nhvr_aggregated.find(network.name());
++          if (it == nhvr_aggregated.end() ||
++              (it->second == "approved" && network.status() != "approved") ||
++              (it->second == "conditional" && network.status() == "prohibited")) {
++            nhvr_aggregated[network.name()] = network.status();
++          }
++        }
++      }
++      // If there are NHVR networks, add them to the output
++      // Simply as a list of name/status pairs
++      if (!nhvr_aggregated.empty()) {
++        writer.start_array("nhvr_networks");
++        for (const auto& [name, status] : nhvr_aggregated) {
++          writer.start_object();
++          writer("name", name);
++          writer("status", status);
++          writer.end_object();
++        }
++        writer.end_array();
++      }
+       // Add Line info if enabled
+       if (api.options().turn_lanes()) {
+         turn_lanes(*trip_leg_itr, maneuver, writer);
+diff --git a/valhalla/baldr/attributes_controller.h b/valhalla/baldr/attributes_controller.h
+index d8340e2aa..b8e61a5b4 100644
+--- a/valhalla/baldr/attributes_controller.h
++++ b/valhalla/baldr/attributes_controller.h
+@@ -8,6 +8,8 @@ namespace valhalla {
+ namespace baldr {
+ 
+ // Edge keys
++// Adding another key to each edge for NHVR, the networks.
++constexpr std::string_view kEdgeNHVRNetworks = "edge.nhvr_networks";
+ constexpr std::string_view kEdgeNames = "edge.names";
+ constexpr std::string_view kEdgeLength = "edge.length";
+ constexpr std::string_view kEdgeSpeed = "edge.speed";
+diff --git a/valhalla/baldr/edgeinfo.h b/valhalla/baldr/edgeinfo.h
+index cdc545c3f..593fbfe6e 100644
+--- a/valhalla/baldr/edgeinfo.h
++++ b/valhalla/baldr/edgeinfo.h
+@@ -16,6 +16,14 @@
+ 
+ namespace valhalla {
+ namespace baldr {
++// Represents a network on an edge
++// With the name and status of the network
++// The ints are converted to enum values later
++struct NHVRNetworkEntry {
++  std::string name;
++  enum Status : uint8_t { kApproved = 0, kConditional = 1, kProhibited = 2 };
++  Status status;
++};
+ 
+ constexpr size_t kMaxNamesPerEdge = 15;
+ constexpr size_t kMaxEncodedShapeSize = 65535;
+@@ -294,6 +302,8 @@ public:
+    */
+   int8_t layer() const;
+ 
++  // Define the NHVR network entries for the edge.
++  std::vector<NHVRNetworkEntry> nhvr_networks() const;
+   /**
+    * Get levels of the edge.
+    * @see https://wiki.openstreetmap.org/wiki/Key:level
+diff --git a/valhalla/baldr/graphconstants.h b/valhalla/baldr/graphconstants.h
+index eb2bb6ba8..f028bcd28 100644
+--- a/valhalla/baldr/graphconstants.h
++++ b/valhalla/baldr/graphconstants.h
+@@ -411,6 +411,9 @@ enum class TaggedValue : uint8_t { // must start at 1 due to nulls
+   kConditionalSpeedLimits = 7,
+   kLevels = 8,
+   kOSMNodeIds = 9,
++  // NHVR Network added as a new tag, 10 was the next one to be used
++  // Valhalla suggests to use tags to avoid extending bitfields and is more effecient
++  kNHVRNetwork = 10,
+   // we used to have bug when we encoded 1 and 2 as their ASCII codes, but not actual 1 and 2 values
+   // see https://github.com/valhalla/valhalla/issues/3262
+   kTunnel = static_cast<uint8_t>('1'),
+diff --git a/valhalla/mjolnir/osmdata.h b/valhalla/mjolnir/osmdata.h
+index a434e3bfd..6964c2530 100644
+--- a/valhalla/mjolnir/osmdata.h
++++ b/valhalla/mjolnir/osmdata.h
+@@ -72,6 +72,9 @@ using OSMStringMap = std::unordered_map<uint64_t, uint32_t>;
+  * Populated by the PBF parser and sent into GraphBuilder.
+  */
+ struct OSMData {
++  // This will store the NHVR network values for each way.
++  // It is a string because it holds the "raw" Name:Status|... string
++  std::unordered_map<uint64_t, std::string> nhvr_networks_;
+   /**
+    * Write data to temporary files.
+    * @return Returns true if successful, false if an error occurs.

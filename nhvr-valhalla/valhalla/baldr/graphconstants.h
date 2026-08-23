@@ -411,7 +411,8 @@ enum class TaggedValue : uint8_t { // must start at 1 due to nulls
   kConditionalSpeedLimits = 7,
   kLevels = 8,
   kOSMNodeIds = 9,
-  // NHVR Network added as a new tag
+  // NHVR Network added as a new tag, 10 was the next one to be used
+  // Valhalla suggests to use tags to avoid extending bitfields and is more effecient
   kNHVRNetwork = 10,
   // we used to have bug when we encoded 1 and 2 as their ASCII codes, but not actual 1 and 2 values
   // see https://github.com/valhalla/valhalla/issues/3262

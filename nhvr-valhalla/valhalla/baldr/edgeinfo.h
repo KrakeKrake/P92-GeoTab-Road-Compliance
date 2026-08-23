@@ -16,8 +16,9 @@
 
 namespace valhalla {
 namespace baldr {
-    // Represents a network on an edge
-    // With the name and status of the network
+// Represents a network on an edge
+// With the name and status of the network
+// The ints are converted to enum values later
 struct NHVRNetworkEntry {
   std::string name;
   enum Status : uint8_t { kApproved = 0, kConditional = 1, kProhibited = 2 };
@@ -301,6 +302,7 @@ public:
    */
   int8_t layer() const;
 
+  // Define the NHVR network entries for the edge.
   std::vector<NHVRNetworkEntry> nhvr_networks() const;
   /**
    * Get levels of the edge.

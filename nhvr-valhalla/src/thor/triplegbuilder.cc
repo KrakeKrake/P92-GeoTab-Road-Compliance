@@ -1622,6 +1622,9 @@ TripLeg_Edge* AddTripEdge(const AttributesController& controller,
     trip_edge->set_truck_route(true);
   }
 
+  // If we have NHVR networks, set the name
+  // and status of that edge accordingly
+  // The set status is basically a case
   if (controller(kEdgeNHVRNetworks)) {
     auto networks = edgeinfo.nhvr_networks();
     for (const auto& n : networks) {

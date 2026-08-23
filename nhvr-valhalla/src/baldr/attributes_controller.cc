@@ -36,7 +36,7 @@ PrecomputeEnabledCategories(const std::unordered_map<std::string_view, bool>& at
  */
 const std::unordered_map<std::string_view, bool> AttributesController::kDefaultAttributes = {
     // Edge keys
-    {kEdgeNHVRNetworks, false},  // off by default, they still get calcualted on
+    {kEdgeNHVRNetworks, false},  // opt-in only (request via filters.attributes)
     // Just not included in the default return
     {kEdgeNames, true},
     {kEdgeLength, true},
