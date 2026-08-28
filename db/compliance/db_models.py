@@ -1,4 +1,4 @@
-from sqlalchemy import Boolean, Column, ForeignKey, Integer, Numeric, Text, TIMESTAMP
+from sqlalchemy import Boolean, Column, DateTime, ForeignKey, Integer, Numeric, Text, func
 from .database import Base
 
 class LicenceClass(Base):
@@ -190,9 +190,23 @@ class User(Base):
     __table_args__ = {"schema": "account"}
 
     user_id = Column(Integer, primary_key=True, index=True)
+
     email = Column(Text, nullable=False, unique=True)
     username = Column(Text, nullable=False, unique=True)
     password_hash = Column(Text, nullable=False)
-    licence_class_id = Column(Text, ForeignKey("compliance.licence_classes.licence_class_id"))
-    favourite_profile_id = Column(Text, ForeignKey("compliance.vehicle_profiles.profile_id"))
-    created_at = Column(TIMESTAMP)
+
+    licence_class_id = Column(
+        Text,
+        ForeignKey("compliance.licence_classes.licence_class_id")
+    )
+
+    favourite_profile_id = Column(
+        Text,
+        ForeignKey("compliance.vehicle_profiles.profile_id")
+    )
+
+    created_at = Column(
+        DateTime,
+        server_default=func.now(),
+        nullable=False
+    )
