@@ -11,6 +11,11 @@ import { RootComponent } from './components/root-component';
 import * as TanStackQueryProvider from './lib/tanstack-query/root-provider';
 import { searchParamsSchema, isValidTab } from './utils/route-schemas';
 import type { Profile } from './stores/common-store';
+import LoginPage from './pages/LoginPage';
+import SignupPage from './pages/SignupPage';
+import ProfilePage from './pages/ProfilePage';
+import AddVehiclePage from './pages/AddVehiclePage';
+import EditVehiclePage from './pages/EditVehiclePage';
 
 const defaultProfile = ((import.meta.env
   .VITE_DEFAULT_COSTING_MODEL as string) || 'bicycle') as Profile;
@@ -75,7 +80,46 @@ const activeTabRoute = createRoute({
   },
 });
 
-export const routeTree = rootRoute.addChildren([indexRoute, activeTabRoute]);
+const loginRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/login',
+  component: LoginPage,
+});
+
+const signupRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/signup',
+  component: SignupPage,
+});
+
+const profileRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/profile',
+  component: ProfilePage,
+});
+
+const addVehicleRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/admin/add-vehicle',
+  component: AddVehiclePage,
+});
+
+const editVehicleRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/admin/edit-vehicle',
+  component: EditVehiclePage,
+});
+
+export const routeTree = rootRoute.addChildren([
+  indexRoute,
+  activeTabRoute,
+  loginRoute,
+  signupRoute,
+  profileRoute,
+  addVehicleRoute,
+  editVehicleRoute,
+  
+]);
 
 export const router = createRouter({
   routeTree,
