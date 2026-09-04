@@ -529,7 +529,7 @@ EdgesLayerBuilder::EdgesLayerBuilder(vtzero::tile_builder& tile,
     : vtzero::layer_builder(tile, name), controller_(controller) {
   key_tile_level_ = add_key_without_dup_check("tile_level");
   key_road_class_ = add_key_without_dup_check("road_class");
-
+  key_osm_id_ = add_key_without_dup_check("osm_id");
   init_attribute_keys(loki::detail::kSharedEdgeAttributes, controller);
   init_attribute_keys(loki::detail::kForwardEdgeAttributes, controller);
   init_attribute_keys(loki::detail::kForwardLiveSpeedAttributes, controller);
@@ -565,7 +565,7 @@ void EdgesLayerBuilder::add_feature(const std::vector<vtzero::point>& geometry,
   feature.add_property(key_tile_level_, vtzero::encoded_property_value(edge_id.level()));
   feature.add_property(key_road_class_,
                        vtzero::encoded_property_value(static_cast<uint32_t>(edge->classification())));
-
+  feature.add_property(key_osm_id_, vtzero::encoded_property_value(edge_info.wayid()));
   set_attribute_values(loki::detail::kSharedEdgeAttributes, controller_, feature, *edge, edge_info,
                        nullptr);
 

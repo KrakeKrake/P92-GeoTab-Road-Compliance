@@ -139,6 +139,7 @@ public:
   vtzero::index_value key_edge_id_fwd_;
   vtzero::index_value key_edge_id_rev_;
   vtzero::index_value key_road_class_;
+  vtzero::index_value key_osm_id_;
   vtzero::index_value key_use_;
   vtzero::index_value key_speed_fwd_;
   vtzero::index_value key_speed_rev_;
