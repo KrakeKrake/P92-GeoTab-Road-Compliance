@@ -6,6 +6,7 @@ from sqlalchemy.exc import IntegrityError
 
 from .database import SessionLocal
 from .db_classifier import classify_hvnl_from_db
+from .goods_resolver import resolve_goods_routing_preset
 from .db_models import (
     VehicleCategory,
     VehicleProfile,
@@ -18,7 +19,9 @@ from .db_models import (
     AxleConfigMassLimit,
     DimensionRule,
     InputSanityRange,
+    GoodsType,
     User,
+    
 )
 
 compliance_bp = Blueprint("compliance", __name__, url_prefix="/api/compliance")
@@ -173,7 +176,8 @@ def login():
 
     finally:
         db.close()
-        
+
+
 @compliance_bp.route("/auth/users/<int:user_id>/profile", methods=["PUT"])
 def update_user_profile(user_id):
     data = request.get_json() or {}
@@ -1205,6 +1209,166 @@ def admin_update_vehicle(profile_id):
 
     finally:
         db.close()
+
+@compliance_bp.route("/goods-types", methods=["GET"])
+def list_goods_types():
+    db = get_db_session()
+
+    try:
+        goods_types = (
+            db.query(GoodsType)
+            .order_by(GoodsType.display_name)
+            .all()
+        )
+
+        return jsonify([
+            {
+                "goods_type_id": goods.goods_type_id,
+                "display_name": goods.display_name,
+                "description": goods.description,
+            }
+            for goods in goods_types
+        ])
+
+    finally:
+        db.close()
+
+@compliance_bp.route("/resolve-goods-routing", methods=["POST"])
+def resolve_goods_routing():
+    data = request.get_json() or {}
+
+    goods_type_id = (
+        data.get("goods_type_id") or ""
+    ).strip().upper()
+
+    profile_id = (
+        data.get("profile_id") or ""
+    ).strip().upper()
+
+    axle_config_id = (
+        data.get("axle_config_id") or ""
+    ).strip().upper()
+
+    vehicle_classification = (
+        data.get("vehicle_classification") or ""
+    ).strip().lower()
+
+    condition_codes = data.get("condition_codes") or []
+
+    # ---------------------------------------------------------
+    # Required fields
+    # ---------------------------------------------------------
+    if not goods_type_id:
+        return jsonify({
+            "detail": "goods_type_id is required."
+        }), 400
+
+    if not profile_id:
+        return jsonify({
+            "detail": "profile_id is required."
+        }), 400
+
+    if not axle_config_id:
+        return jsonify({
+            "detail": "axle_config_id is required."
+        }), 400
+
+    if not vehicle_classification:
+        return jsonify({
+            "detail": "vehicle_classification is required."
+        }), 400
+
+    allowed_classifications = {
+        "general_access",
+        "class_1",
+        "class_2",
+        "class_3",
+    }
+
+    if vehicle_classification not in allowed_classifications:
+        return jsonify({
+            "detail":
+                "vehicle_classification must be "
+                "general_access, class_1, class_2, or class_3."
+        }), 400
+
+    if not isinstance(condition_codes, list):
+        return jsonify({
+            "detail": "condition_codes must be a list."
+        }), 400
+
+    condition_codes = [
+        str(code).strip().upper()
+        for code in condition_codes
+        if str(code).strip()
+    ]
+
+    db = get_db_session()
+
+    try:
+        # -----------------------------------------------------
+        # Find vehicle profile
+        # -----------------------------------------------------
+        profile = (
+            db.query(VehicleProfile)
+            .filter(
+                VehicleProfile.profile_id == profile_id
+            )
+            .first()
+        )
+
+        if not profile:
+            return jsonify({
+                "detail": "Vehicle profile not found."
+            }), 404
+
+        # -----------------------------------------------------
+        # Find axle configuration
+        # -----------------------------------------------------
+        axle_config = (
+            db.query(AxleConfiguration)
+            .filter(
+                AxleConfiguration.axle_config_id
+                == axle_config_id
+            )
+            .first()
+        )
+
+        if not axle_config:
+            return jsonify({
+                "detail": "Axle configuration not found."
+            }), 404
+
+        # Prevent an axle configuration from another
+        # vehicle template being used accidentally.
+        if axle_config.template_id != profile.template_id:
+            return jsonify({
+                "detail":
+                    "The axle configuration does not belong "
+                    "to the selected vehicle profile."
+            }), 400
+
+        # -----------------------------------------------------
+        # Resolve goods-specific routing behaviour
+        # -----------------------------------------------------
+        result = resolve_goods_routing_preset(
+            db=db,
+            goods_type_id=goods_type_id,
+            template_id=profile.template_id,
+            axle_config_id=axle_config.axle_config_id,
+            vehicle_classification=vehicle_classification,
+            access_path=axle_config.access_path,
+            condition_codes=condition_codes,
+        )
+
+        if result.get("status") == "error":
+            return jsonify(result), 404
+
+        return jsonify(result)
+
+    finally:
+        db.close()
+
 
 @compliance_bp.route("/profiles", methods=["GET"])
 def list_profiles():
