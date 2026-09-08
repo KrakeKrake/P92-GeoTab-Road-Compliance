@@ -108,7 +108,7 @@ describe('RouteLines', () => {
       expect.objectContaining({
         id: 'routes-outline',
         type: 'line',
-        paint: { 'line-color': '#FFF', 'line-width': 9, 'line-opacity': 1 },
+        paint: { 'line-color': '#FFF', 'line-width': 9, 'line-opacity': 0.5 },
       })
     );
   });
@@ -128,7 +128,7 @@ describe('RouteLines', () => {
         paint: {
           'line-color': ['get', 'color'],
           'line-width': 5,
-          'line-opacity': ['case', ['==', ['get', 'routeIndex'], -1], 1, 0.5],
+          'line-opacity': ['case', ['==', ['get', 'routeIndex'], -1], 0.8, 0.5],
         },
       })
     );
