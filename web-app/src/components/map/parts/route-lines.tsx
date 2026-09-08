@@ -89,7 +89,7 @@ export function RouteLines() {
         paint={{
           'line-color': '#FFF',
           'line-width': 9,
-          'line-opacity': 1,
+          'line-opacity': 0.5,
         }}
       />
       <Layer
@@ -101,7 +101,7 @@ export function RouteLines() {
           'line-opacity': [
             'case',
             ['==', ['get', 'routeIndex'], activeRouteIndex],
-            1,
+            0.8,
             0.5,
           ],
         }}
