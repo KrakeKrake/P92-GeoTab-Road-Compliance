@@ -1,57 +1,81 @@
 import { create } from 'zustand';
 
-/*
- * Vehicle configuration that has successfully passed
- * the Compliance Engine and is ready to be used
- * by the routing system.
- */
 export interface AppliedVehicle {
-  // Vehicle identity
   profileId: string;
   profileName: string;
 
   templateId: string;
   vehicleType: string;
+
   vehicleClass: string;
 
-  // Axle configuration
   axleConfigId: string;
   axleConfigName: string;
 
-  // Compliance information
   massScheme: string;
   accessPath: string;
 
-  // Physical properties for routing
   widthM: number;
   heightM: number;
   lengthM: number;
+
   operatingMassT: number;
 }
 
-interface ComplianceState {
-  /*
-   * null means no vehicle has been successfully
-   * validated/applied yet.
-   */
-  appliedVehicle: AppliedVehicle | null;
+export interface RoutingRestriction {
+  restrictionId: string;
+  restrictionName: string;
+
+  source: string;
+  restrictionType: string;
+
+  geometryRef: string | null;
+  isDerived: boolean;
+
+  conditionCode: string | null;
+}
+
+export interface RoutingPreset {
+  goodsTypeId: string;
+  goodsDisplayName: string;
 
   /*
-   * Save a successfully validated vehicle.
+   * null means:
+   * keep the normal network selected from
+   * the vehicle configuration.
    */
+  networkOverrideKey: string | null;
+
+  networkRuleNote: string | null;
+
+  additionalRestrictions: RoutingRestriction[];
+
+  reason: string;
+}
+
+interface ComplianceState {
+  appliedVehicle: AppliedVehicle | null;
+
+  routingPreset: RoutingPreset | null;
+
   setAppliedVehicle: (
     vehicle: AppliedVehicle
   ) => void;
 
-  /*
-   * Remove the currently applied vehicle.
-   */
   clearAppliedVehicle: () => void;
+
+  setRoutingPreset: (
+    preset: RoutingPreset
+  ) => void;
+
+  clearRoutingPreset: () => void;
 }
 
 export const useComplianceStore =
   create<ComplianceState>((set) => ({
     appliedVehicle: null,
+
+    routingPreset: null,
 
     setAppliedVehicle: (vehicle) =>
       set({
@@ -61,5 +85,16 @@ export const useComplianceStore =
     clearAppliedVehicle: () =>
       set({
         appliedVehicle: null,
+        routingPreset: null,
+      }),
+
+    setRoutingPreset: (preset) =>
+      set({
+        routingPreset: preset,
+      }),
+
+    clearRoutingPreset: () =>
+      set({
+        routingPreset: null,
       }),
   }));
