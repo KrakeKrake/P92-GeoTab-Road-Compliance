@@ -1,5 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
 import { useComplianceStore } from '@/stores/compliance-store';
+import { GoodsCompliance } from './goods-compliance';
+
+
 interface User {
   user_id: number;
   email: string;
@@ -8,16 +11,19 @@ interface User {
   favourite_profile_id?: string | null;
 }
 
+
 interface ProfileOption {
   profile_id: string;
   display_name: string;
 }
+
 
 interface MassLimit {
   mass_scheme_id: string;
   mass_limit_t: number | null;
   applicable: boolean;
 }
+
 
 interface AxleConfiguration {
   config_id: string;
@@ -27,6 +33,7 @@ interface AxleConfiguration {
   note?: string | null;
   mass_limits: MassLimit[];
 }
+
 
 interface VehicleProfile {
   profile_id: string;
@@ -43,11 +50,13 @@ interface VehicleProfile {
   allow_custom_dimensions?: boolean;
 }
 
+
 interface TemplateQuestion {
   name: string;
   type: string;
   label: string;
 }
+
 
 interface VehicleTemplate {
   vehicle_id: string;
@@ -55,6 +64,7 @@ interface VehicleTemplate {
   base_type?: string | null;
   extra_questions: TemplateQuestion[];
 }
+
 
 interface DimensionRanges {
   template_id: string;
@@ -66,12 +76,14 @@ interface DimensionRanges {
   max_length_m: number;
 }
 
+
 interface VehicleFormData {
   profile: VehicleProfile;
   template: VehicleTemplate;
   dimension_ranges: DimensionRanges | null;
   axle_configurations: AxleConfiguration[];
 }
+
 
 interface ClassificationResult {
   profile_id: string;
@@ -85,6 +97,7 @@ interface ClassificationResult {
   warnings: string[];
 }
 
+
 interface MassValidationResult {
   status: string;
   compliant: boolean;
@@ -92,17 +105,49 @@ interface MassValidationResult {
   selected_limit_t: number | null;
 }
 
+
 interface ComplianceResult {
   classification_result: ClassificationResult;
   mass_validation_result: MassValidationResult;
 }
 
+
+interface GoodsRoutingRestrictionResponse {
+  restriction_id: string;
+  restriction_name: string;
+  source: string;
+  restriction_type: string;
+  geometry_ref: string | null;
+  is_derived: boolean;
+  condition_code: string | null;
+}
+
+
+interface GoodsRoutingResponse {
+  status: string;
+
+  goods_type_id: string;
+  goods_display_name: string;
+
+  network_override_key: string | null;
+  network_rule_note: string | null;
+
+  additional_restrictions:
+    GoodsRoutingRestrictionResponse[];
+
+  reason: string;
+}
+
+
 type ExtraAnswerValue = boolean | string;
 
 type Answers = Record<string, boolean | number>;
 
-export const VehicleCompliance = () => {
 
+export const VehicleCompliance = () => {
+  /*
+   * Zustand store
+   */
   const setAppliedVehicle = useComplianceStore(
     (state) => state.setAppliedVehicle
   );
@@ -110,83 +155,164 @@ export const VehicleCompliance = () => {
   const clearAppliedVehicle = useComplianceStore(
     (state) => state.clearAppliedVehicle
   );
+
+  const setRoutingPreset = useComplianceStore(
+    (state) => state.setRoutingPreset
+  );
+
+  const clearRoutingPreset = useComplianceStore(
+    (state) => state.clearRoutingPreset
+  );
+
+
+  /*
+   * User / licence
+   */
   const [user, setUser] = useState<User | null>(null);
 
-  const [licenceClass, setLicenceClass] = useState('');
+  const [licenceClass, setLicenceClass] =
+    useState('');
 
-  const [profiles, setProfiles] = useState<ProfileOption[]>([]);
-  const [selectedProfileId, setSelectedProfileId] = useState('');
+
+  /*
+   * Vehicle profile
+   */
+  const [profiles, setProfiles] =
+    useState<ProfileOption[]>([]);
+
+  const [selectedProfileId, setSelectedProfileId] =
+    useState('');
 
   const [vehicleFormData, setVehicleFormData] =
     useState<VehicleFormData | null>(null);
 
-  const [selectedAxleConfigId, setSelectedAxleConfigId] =
+
+  /*
+   * Axle / mass
+   */
+  const [
+    selectedAxleConfigId,
+    setSelectedAxleConfigId
+  ] = useState('');
+
+  const [
+    selectedMassScheme,
+    setSelectedMassScheme
+  ] = useState('');
+
+  const [operatingMass, setOperatingMass] =
     useState('');
 
-  const [selectedMassScheme, setSelectedMassScheme] =
+
+  /*
+   * Goods
+   */
+  const [
+    selectedGoodsType,
+    setSelectedGoodsType
+  ] = useState('');
+
+
+  /*
+   * Dimensions
+   */
+  const [
+    useCustomDimensions,
+    setUseCustomDimensions
+  ] = useState(false);
+
+  const [customWidth, setCustomWidth] =
     useState('');
 
-  const [operatingMass, setOperatingMass] = useState('');
+  const [customHeight, setCustomHeight] =
+    useState('');
 
-  const [useCustomDimensions, setUseCustomDimensions] =
-    useState(false);
+  const [customLength, setCustomLength] =
+    useState('');
 
-  const [customWidth, setCustomWidth] = useState('');
-  const [customHeight, setCustomHeight] = useState('');
-  const [customLength, setCustomLength] = useState('');
 
+  /*
+   * Additional vehicle questions
+   */
   const [extraAnswers, setExtraAnswers] =
     useState<Record<string, ExtraAnswerValue>>({});
 
-  const [profilesLoading, setProfilesLoading] = useState(false);
-  const [formLoading, setFormLoading] = useState(false);
-  const [submitting, setSubmitting] = useState(false);
 
-  const [error, setError] = useState('');
+  /*
+   * Loading / result states
+   */
+  const [profilesLoading, setProfilesLoading] =
+    useState(false);
+
+  const [formLoading, setFormLoading] =
+    useState(false);
+
+  const [submitting, setSubmitting] =
+    useState(false);
+
+  const [error, setError] =
+    useState('');
+
   const [result, setResult] =
     useState<ComplianceResult | null>(null);
 
-  const initialFavouriteLoaded = useRef(false);
+
+  const initialFavouriteLoaded =
+    useRef(false);
+
 
   /*
    * Load logged-in user or guest licence.
    */
   function loadUser() {
-    const storedUser = localStorage.getItem('user');
+    const storedUser =
+      localStorage.getItem('user');
 
     if (!storedUser) {
       setUser(null);
 
-      const guestLicence = sessionStorage.getItem(
-        'guest_selected_licence_class'
+      const guestLicence =
+        sessionStorage.getItem(
+          'guest_selected_licence_class'
+        );
+
+      setLicenceClass(
+        guestLicence ?? ''
       );
 
-      setLicenceClass(guestLicence ?? '');
-
-      initialFavouriteLoaded.current = true;
+      initialFavouriteLoaded.current =
+        true;
 
       return;
     }
 
     try {
-      const parsedUser = JSON.parse(storedUser) as User;
+      const parsedUser =
+        JSON.parse(storedUser) as User;
 
       setUser(parsedUser);
 
       if (parsedUser.licence_class_id) {
-        setLicenceClass(parsedUser.licence_class_id);
+        setLicenceClass(
+          parsedUser.licence_class_id
+        );
       } else {
         setLicenceClass('');
       }
 
-      initialFavouriteLoaded.current = false;
+      initialFavouriteLoaded.current =
+        false;
     } catch (error) {
-      console.error('Unable to read saved user:', error);
+      console.error(
+        'Unable to read saved user:',
+        error
+      );
 
       setUser(null);
       setLicenceClass('');
     }
   }
+
 
   /*
    * Listen for login/logout.
@@ -194,12 +320,19 @@ export const VehicleCompliance = () => {
   useEffect(() => {
     loadUser();
 
-    window.addEventListener('auth-updated', loadUser);
+    window.addEventListener(
+      'auth-updated',
+      loadUser
+    );
 
     return () => {
-      window.removeEventListener('auth-updated', loadUser);
+      window.removeEventListener(
+        'auth-updated',
+        loadUser
+      );
     };
   }, []);
+
 
   /*
    * Load profiles allowed by licence.
@@ -210,9 +343,12 @@ export const VehicleCompliance = () => {
       setSelectedProfileId('');
 
       setVehicleFormData(null);
+
       setSelectedAxleConfigId('');
       setSelectedMassScheme('');
       setOperatingMass('');
+
+      setSelectedGoodsType('');
 
       setUseCustomDimensions(false);
       setCustomWidth('');
@@ -220,8 +356,11 @@ export const VehicleCompliance = () => {
       setCustomLength('');
 
       setExtraAnswers({});
+
       setResult(null);
       setError('');
+
+      clearAppliedVehicle();
 
       if (!licenceClass) {
         return;
@@ -234,32 +373,38 @@ export const VehicleCompliance = () => {
           `/api/compliance/profiles-by-licence/${licenceClass}`
         );
 
-        const data = await response.json();
+        const data =
+          await response.json();
 
         if (!response.ok) {
           throw new Error(
-            data.detail || 'Failed to load vehicle profiles.'
+            data.detail ||
+              'Failed to load vehicle profiles.'
           );
         }
 
-        const loadedProfiles: ProfileOption[] = Array.isArray(data)
-          ? data
-          : [];
+        const loadedProfiles:
+          ProfileOption[] =
+          Array.isArray(data)
+            ? data
+            : [];
 
         setProfiles(loadedProfiles);
 
         /*
-         * Automatically select the user's favourite vehicle
-         * on initial load.
+         * Automatically select the user's
+         * favourite vehicle on initial load.
          */
         if (
           user?.favourite_profile_id &&
           !initialFavouriteLoaded.current
         ) {
-          const favouriteExists = loadedProfiles.some(
-            (profile) =>
-              profile.profile_id === user.favourite_profile_id
-          );
+          const favouriteExists =
+            loadedProfiles.some(
+              (profile) =>
+                profile.profile_id ===
+                user.favourite_profile_id
+            );
 
           if (favouriteExists) {
             setSelectedProfileId(
@@ -267,7 +412,8 @@ export const VehicleCompliance = () => {
             );
           }
 
-          initialFavouriteLoaded.current = true;
+          initialFavouriteLoaded.current =
+            true;
         }
       } catch (error) {
         console.error(
@@ -278,7 +424,9 @@ export const VehicleCompliance = () => {
         if (error instanceof Error) {
           setError(error.message);
         } else {
-          setError('Failed to load vehicle profiles.');
+          setError(
+            'Failed to load vehicle profiles.'
+          );
         }
       } finally {
         setProfilesLoading(false);
@@ -287,6 +435,7 @@ export const VehicleCompliance = () => {
 
     loadProfiles();
   }, [licenceClass, user]);
+
 
   /*
    * Load full vehicle form data.
@@ -299,14 +448,19 @@ export const VehicleCompliance = () => {
       setSelectedMassScheme('');
       setOperatingMass('');
 
+      setSelectedGoodsType('');
+
       setUseCustomDimensions(false);
       setCustomWidth('');
       setCustomHeight('');
       setCustomLength('');
 
       setExtraAnswers({});
+
       setResult(null);
       setError('');
+
+      clearAppliedVehicle();
 
       if (!selectedProfileId) {
         return;
@@ -319,34 +473,44 @@ export const VehicleCompliance = () => {
           `/api/compliance/vehicle-form-data/${selectedProfileId}`
         );
 
-        const data = await response.json();
+        const data =
+          await response.json();
 
         if (!response.ok) {
           throw new Error(
             data.detail ||
-            'Failed to load vehicle information.'
+              'Failed to load vehicle information.'
           );
         }
 
-        const loadedData = data as VehicleFormData;
+        const loadedData =
+          data as VehicleFormData;
 
-        setVehicleFormData(loadedData);
+        setVehicleFormData(
+          loadedData
+        );
 
         /*
-         * Initialise additional question answers.
+         * Initialise additional question
+         * answers.
          */
-        const initialAnswers: Record<
-          string,
-          ExtraAnswerValue
-        > = {};
+        const initialAnswers:
+          Record<
+            string,
+            ExtraAnswerValue
+          > = {};
 
         loadedData.template.extra_questions.forEach(
           (question) => {
-            initialAnswers[question.name] = '';
+            initialAnswers[
+              question.name
+            ] = '';
           }
         );
 
-        setExtraAnswers(initialAnswers);
+        setExtraAnswers(
+          initialAnswers
+        );
       } catch (error) {
         console.error(
           'Failed to load vehicle form data:',
@@ -368,15 +532,20 @@ export const VehicleCompliance = () => {
     loadVehicleFormData();
   }, [selectedProfileId]);
 
+
   /*
    * Licence changed.
    */
   function handleLicenceChange(
-    event: React.ChangeEvent<HTMLSelectElement>
+    event:
+      React.ChangeEvent<HTMLSelectElement>
   ) {
-    const newLicence = event.target.value;
+    const newLicence =
+      event.target.value;
 
-    setLicenceClass(newLicence);
+    setLicenceClass(
+      newLicence
+    );
 
     if (!user) {
       if (newLicence) {
@@ -392,27 +561,40 @@ export const VehicleCompliance = () => {
     }
   }
 
+
   /*
    * Profile changed.
    */
   function handleProfileChange(
-    event: React.ChangeEvent<HTMLSelectElement>
+    event:
+      React.ChangeEvent<HTMLSelectElement>
   ) {
-    setSelectedProfileId(event.target.value);
+    setSelectedProfileId(
+      event.target.value
+    );
   }
+
 
   /*
    * Axle changed.
    */
   function handleAxleChange(
-    event: React.ChangeEvent<HTMLSelectElement>
+    event:
+      React.ChangeEvent<HTMLSelectElement>
   ) {
-    setSelectedAxleConfigId(event.target.value);
+    setSelectedAxleConfigId(
+      event.target.value
+    );
 
     setSelectedMassScheme('');
+    setSelectedGoodsType('');
+
     setResult(null);
     setError('');
+
+    clearAppliedVehicle();
   }
+
 
   /*
    * Additional question changed.
@@ -423,159 +605,237 @@ export const VehicleCompliance = () => {
   ) {
     if (question.type === 'bool') {
       if (value === '') {
-        setExtraAnswers((current) => ({
-          ...current,
-          [question.name]: '',
-        }));
+        setExtraAnswers(
+          (current) => ({
+            ...current,
+            [question.name]: '',
+          })
+        );
 
         return;
       }
 
-      setExtraAnswers((current) => ({
-        ...current,
-        [question.name]: value === 'true',
-      }));
+      setExtraAnswers(
+        (current) => ({
+          ...current,
+          [question.name]:
+            value === 'true',
+        })
+      );
 
       return;
     }
 
-    setExtraAnswers((current) => ({
-      ...current,
-      [question.name]: value,
-    }));
+    setExtraAnswers(
+      (current) => ({
+        ...current,
+        [question.name]: value,
+      })
+    );
   }
+
 
   /*
    * Current axle.
    */
   const currentAxleConfig =
-    vehicleFormData?.axle_configurations.find(
-      (config) =>
-        config.config_id === selectedAxleConfigId
-    ) ?? null;
+    vehicleFormData
+      ?.axle_configurations
+      .find(
+        (config) =>
+          config.config_id ===
+          selectedAxleConfigId
+      ) ?? null;
+
 
   /*
    * Applicable mass schemes.
    */
   const applicableMassLimits =
-    currentAxleConfig?.mass_limits.filter(
-      (limit) =>
-        limit.applicable &&
-        limit.mass_limit_t !== null
-    ) ?? [];
+    currentAxleConfig
+      ?.mass_limits
+      .filter(
+        (limit) =>
+          limit.applicable &&
+          limit.mass_limit_t !== null
+      ) ?? [];
+
 
   const dimensionRanges =
-    vehicleFormData?.dimension_ranges ?? null;
+    vehicleFormData
+      ?.dimension_ranges ??
+    null;
+
 
   const templateQuestions =
-    vehicleFormData?.template.extra_questions ?? [];
+    vehicleFormData
+      ?.template
+      .extra_questions ??
+    [];
+
 
   /*
-   * Build answers object expected by Flask.
+   * Build answers object expected
+   * by Flask.
    */
   function buildAnswers(): Answers {
     const answers: Answers = {};
 
     if (useCustomDimensions) {
-      answers.overall_width_m = Number(customWidth);
-      answers.overall_height_m = Number(customHeight);
-      answers.overall_length_m = Number(customLength);
+      answers.overall_width_m =
+        Number(customWidth);
+
+      answers.overall_height_m =
+        Number(customHeight);
+
+      answers.overall_length_m =
+        Number(customLength);
     }
 
-    templateQuestions.forEach((question) => {
-      const value = extraAnswers[question.name];
+    templateQuestions.forEach(
+      (question) => {
+        const value =
+          extraAnswers[
+            question.name
+          ];
 
-      if (
-        value === undefined ||
-        value === ''
-      ) {
-        return;
-      }
+        if (
+          value === undefined ||
+          value === ''
+        ) {
+          return;
+        }
 
-      if (question.type === 'bool') {
-        answers[question.name] = value === true;
-      } else {
-        answers[question.name] = Number(value);
+        if (
+          question.type ===
+          'bool'
+        ) {
+          answers[
+            question.name
+          ] = value === true;
+        } else {
+          answers[
+            question.name
+          ] = Number(value);
+        }
       }
-    });
+    );
 
     return answers;
   }
 
+
   /*
-   * Check all frontend inputs before sending
-   * the request to Flask.
+   * Check frontend inputs
+   * before sending to Flask.
    */
-  function validateForm(): string | null {
+  function validateForm():
+    string | null {
     if (!licenceClass) {
-      return 'Please select a licence class first.';
+      return (
+        'Please select a licence class first.'
+      );
     }
 
-    if (!selectedProfileId || !vehicleFormData) {
-      return 'Please select a vehicle profile first.';
+    if (
+      !selectedProfileId ||
+      !vehicleFormData
+    ) {
+      return (
+        'Please select a vehicle profile first.'
+      );
     }
 
-    if (!selectedAxleConfigId || !currentAxleConfig) {
-      return 'Please select an axle configuration first.';
+    if (
+      !selectedAxleConfigId ||
+      !currentAxleConfig
+    ) {
+      return (
+        'Please select an axle configuration first.'
+      );
     }
 
     if (!selectedMassScheme) {
-      return 'Please select a mass scheme.';
+      return (
+        'Please select a mass scheme.'
+      );
     }
 
-    const mass = Number(operatingMass);
+    const mass =
+      Number(operatingMass);
 
     if (
       operatingMass === '' ||
       !Number.isFinite(mass) ||
       mass <= 0
     ) {
-      return 'Please enter a valid operating mass in tonnes.';
+      return (
+        'Please enter a valid operating mass in tonnes.'
+      );
     }
 
     if (useCustomDimensions) {
       if (customWidth === '') {
-        return 'Please enter the overall width.';
+        return (
+          'Please enter the overall width.'
+        );
       }
 
       if (customHeight === '') {
-        return 'Please enter the overall height.';
+        return (
+          'Please enter the overall height.'
+        );
       }
 
       if (customLength === '') {
-        return 'Please enter the overall length.';
+        return (
+          'Please enter the overall length.'
+        );
       }
 
-      const width = Number(customWidth);
-      const height = Number(customHeight);
-      const length = Number(customLength);
+      const width =
+        Number(customWidth);
+
+      const height =
+        Number(customHeight);
+
+      const length =
+        Number(customLength);
 
       if (
         !Number.isFinite(width) ||
         !Number.isFinite(height) ||
         !Number.isFinite(length)
       ) {
-        return 'Please enter valid vehicle dimensions.';
+        return (
+          'Please enter valid vehicle dimensions.'
+        );
       }
 
       if (dimensionRanges) {
         if (
-          width < dimensionRanges.min_width_m ||
-          width > dimensionRanges.max_width_m
+          width <
+            dimensionRanges.min_width_m ||
+          width >
+            dimensionRanges.max_width_m
         ) {
           return `Width must be between ${dimensionRanges.min_width_m} m and ${dimensionRanges.max_width_m} m.`;
         }
 
         if (
-          height < dimensionRanges.min_height_m ||
-          height > dimensionRanges.max_height_m
+          height <
+            dimensionRanges.min_height_m ||
+          height >
+            dimensionRanges.max_height_m
         ) {
           return `Height must be between ${dimensionRanges.min_height_m} m and ${dimensionRanges.max_height_m} m.`;
         }
 
         if (
-          length < dimensionRanges.min_length_m ||
-          length > dimensionRanges.max_length_m
+          length <
+            dimensionRanges.min_length_m ||
+          length >
+            dimensionRanges.max_length_m
         ) {
           return `Length must be between ${dimensionRanges.min_length_m} m and ${dimensionRanges.max_length_m} m.`;
         }
@@ -583,11 +843,18 @@ export const VehicleCompliance = () => {
     }
 
     /*
-     * The current classifier expects the template
-     * questions to have an answer.
+     * Current classifier expects
+     * template questions to have
+     * an answer.
      */
-    for (const question of templateQuestions) {
-      const answer = extraAnswers[question.name];
+    for (
+      const question
+      of templateQuestions
+    ) {
+      const answer =
+        extraAnswers[
+          question.name
+        ];
 
       if (
         answer === undefined ||
@@ -597,27 +864,123 @@ export const VehicleCompliance = () => {
       }
 
       if (
-        question.type !== 'bool' &&
-        !Number.isFinite(Number(answer))
+        question.type !==
+          'bool' &&
+        !Number.isFinite(
+          Number(answer)
+        )
       ) {
         return `Please enter a valid value for: ${question.label}`;
       }
     }
 
+    /*
+     * Goods are required before
+     * classification.
+     */
+    if (!selectedGoodsType) {
+      return (
+        'Please select what you are carrying.'
+      );
+    }
+
     return null;
   }
 
+
   /*
-   * Send complete compliance request to Flask.
+   * Resolve the goods-specific
+   * network / routing preset.
+   */
+  async function resolveGoodsRouting(
+    vehicleClass: string
+  ): Promise<GoodsRoutingResponse> {
+    const payload = {
+      goods_type_id:
+        selectedGoodsType,
+
+      profile_id:
+        selectedProfileId,
+
+      axle_config_id:
+        selectedAxleConfigId,
+
+      vehicle_classification:
+        vehicleClass,
+
+      condition_codes: [],
+    };
+
+    console.log(
+      'Goods routing payload:',
+      payload
+    );
+
+    const response =
+      await fetch(
+        '/api/compliance/resolve-goods-routing',
+        {
+          method: 'POST',
+
+          headers: {
+            'Content-Type':
+              'application/json',
+          },
+
+          body:
+            JSON.stringify(
+              payload
+            ),
+        }
+      );
+
+    const data =
+      await response.json();
+
+    if (!response.ok) {
+      throw new Error(
+        data.detail ||
+          data.reason ||
+          'Failed to resolve goods routing.'
+      );
+    }
+
+    return (
+      data as GoodsRoutingResponse
+    );
+  }
+
+
+  /*
+   * Send complete compliance
+   * request to Flask.
+   *
+   * Successful flow:
+   *
+   * 1. classify vehicle
+   * 2. validate mass
+   * 3. resolve goods routing
+   * 4. save vehicle
+   * 5. save routing preset
    */
   async function classifyAndValidate() {
     setError('');
     setResult(null);
 
-    const validationError = validateForm();
+    /*
+     * Do not keep an old goods
+     * routing result while checking.
+     */
+    clearRoutingPreset();
+
+    const validationError =
+      validateForm();
 
     if (validationError) {
-      setError(validationError);
+      setError(
+        validationError
+      );
+
       return;
     }
 
@@ -625,12 +988,25 @@ export const VehicleCompliance = () => {
 
     try {
       const payload = {
-        profile_id: selectedProfileId,
-        axle_config_id: selectedAxleConfigId,
-        mass_scheme: selectedMassScheme,
-        operating_mass_t: Number(operatingMass),
-        custom_dimensions: useCustomDimensions,
-        answers: buildAnswers(),
+        profile_id:
+          selectedProfileId,
+
+        axle_config_id:
+          selectedAxleConfigId,
+
+        mass_scheme:
+          selectedMassScheme,
+
+        operating_mass_t:
+          Number(
+            operatingMass
+          ),
+
+        custom_dimensions:
+          useCustomDimensions,
+
+        answers:
+          buildAnswers(),
       };
 
       console.log(
@@ -638,104 +1014,151 @@ export const VehicleCompliance = () => {
         payload
       );
 
-      const response = await fetch(
-        '/api/compliance/classify-and-validate',
-        {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify(payload),
-        }
-      );
+      const response =
+        await fetch(
+          '/api/compliance/classify-and-validate',
+          {
+            method: 'POST',
 
-      const data = await response.json();
+            headers: {
+              'Content-Type':
+                'application/json',
+            },
+
+            body:
+              JSON.stringify(
+                payload
+              ),
+          }
+        );
+
+      const data =
+        await response.json();
 
       if (!response.ok) {
         throw new Error(
           data.detail ||
-          'Failed to classify and validate vehicle.'
+            'Failed to classify and validate vehicle.'
         );
       }
 
       const complianceResult =
         data as ComplianceResult;
 
-      setResult(complianceResult);
+      setResult(
+        complianceResult
+      );
 
       console.log(
         'Compliance result:',
         complianceResult
       );
 
+
       /*
-       * Only apply a vehicle to routing when:
+       * Only apply a vehicle when:
        *
-       * 1. the mass is compliant
-       * 2. the classifier returned a recognised vehicle class
-       *
-       * Class 1, Class 2 and Class 3 are all valid classifications
-       * for routing purposes.
+       * 1. mass is compliant
+       * 2. classifier returned
+       *    a recognised class
        */
       const vehicleClass =
-        complianceResult.classification_result
+        complianceResult
+          .classification_result
           .classification;
 
       const classificationValid =
-        vehicleClass !== 'invalid_input' &&
-        vehicleClass !== 'unknown';
+        vehicleClass !==
+          'invalid_input' &&
+        vehicleClass !==
+          'unknown';
+
 
       if (
-        complianceResult.mass_validation_result
+        complianceResult
+          .mass_validation_result
           .compliant &&
         classificationValid &&
         vehicleFormData &&
         currentAxleConfig
       ) {
-        const widthM = useCustomDimensions
-          ? Number(customWidth)
-          : vehicleFormData.profile.default_width_m;
+        const widthM =
+          useCustomDimensions
+            ? Number(customWidth)
+            : vehicleFormData
+                .profile
+                .default_width_m;
 
-        const heightM = useCustomDimensions
-          ? Number(customHeight)
-          : vehicleFormData.profile.default_height_m;
+        const heightM =
+          useCustomDimensions
+            ? Number(customHeight)
+            : vehicleFormData
+                .profile
+                .default_height_m;
+
+        const lengthM =
+          useCustomDimensions
+            ? Number(customLength)
+            : vehicleFormData
+                .profile
+                .default_length_m;
+
 
         /*
-         * The selected axle configuration may provide
-         * the applicable maximum/default routing length.
-         *
-         * For custom dimensions, use exactly what the user entered.
+         * Resolve goods network
+         * before applying state.
          */
-        const lengthM = useCustomDimensions
-          ? Number(customLength)
-          : vehicleFormData.profile.default_length_m;
+        const goodsRoutingResult =
+          await resolveGoodsRouting(
+            vehicleClass
+          );
 
+        console.log(
+          'Goods routing result:',
+          goodsRoutingResult
+        );
+
+
+        /*
+         * Store validated vehicle.
+         */
         setAppliedVehicle({
           profileId:
-            vehicleFormData.profile.profile_id,
+            vehicleFormData
+              .profile
+              .profile_id,
 
           profileName:
-            vehicleFormData.profile.display_name,
+            vehicleFormData
+              .profile
+              .display_name,
 
           templateId:
-            vehicleFormData.profile.template_id,
+            vehicleFormData
+              .profile
+              .template_id,
 
           vehicleType:
-            vehicleFormData.template.display_name,
+            vehicleFormData
+              .template
+              .display_name,
 
           vehicleClass,
 
           axleConfigId:
-            currentAxleConfig.config_id,
+            currentAxleConfig
+              .config_id,
 
           axleConfigName:
-            currentAxleConfig.display_name,
+            currentAxleConfig
+              .display_name,
 
           massScheme:
             selectedMassScheme,
 
           accessPath:
-            currentAxleConfig.access_path ??
+            currentAxleConfig
+              .access_path ??
             'general_access',
 
           widthM,
@@ -743,16 +1166,81 @@ export const VehicleCompliance = () => {
           lengthM,
 
           operatingMassT:
-            Number(operatingMass),
+            Number(
+              operatingMass
+            ),
         });
 
+
+        /*
+         * Store goods routing preset.
+         */
+        setRoutingPreset({
+          goodsTypeId:
+            goodsRoutingResult
+              .goods_type_id,
+
+          goodsDisplayName:
+            goodsRoutingResult
+              .goods_display_name,
+
+          networkOverrideKey:
+            goodsRoutingResult
+              .network_override_key,
+
+          networkRuleNote:
+            goodsRoutingResult
+              .network_rule_note,
+
+          additionalRestrictions:
+            goodsRoutingResult
+              .additional_restrictions
+              .map(
+                (restriction) => ({
+                  restrictionId:
+                    restriction
+                      .restriction_id,
+
+                  restrictionName:
+                    restriction
+                      .restriction_name,
+
+                  source:
+                    restriction
+                      .source,
+
+                  restrictionType:
+                    restriction
+                      .restriction_type,
+
+                  geometryRef:
+                    restriction
+                      .geometry_ref,
+
+                  isDerived:
+                    restriction
+                      .is_derived,
+
+                  conditionCode:
+                    restriction
+                      .condition_code,
+                })
+              ),
+
+          reason:
+            goodsRoutingResult
+              .reason,
+        });
+
+
         console.log(
-          'Vehicle applied to routing store.'
+          'Vehicle and goods routing preset applied.'
         );
       } else {
         /*
-         * Do not leave an old valid vehicle applied when
-         * the newest compliance check fails.
+         * Do not leave an old
+         * valid vehicle applied
+         * when the latest check fails.
          */
         clearAppliedVehicle();
 
@@ -760,16 +1248,23 @@ export const VehicleCompliance = () => {
           'Vehicle was not applied because it did not pass validation.'
         );
       }
-
-
     } catch (error) {
       console.error(
         'Classification failed:',
         error
       );
 
+      /*
+       * Also remove any old vehicle
+       * and routing preset if the
+       * new request fails.
+       */
+      clearAppliedVehicle();
+
       if (error instanceof Error) {
-        setError(error.message);
+        setError(
+          error.message
+        );
       } else {
         setError(
           'Failed to classify and validate vehicle.'
@@ -780,74 +1275,116 @@ export const VehicleCompliance = () => {
     }
   }
 
+
   /*
-   * Clear vehicle inputs while retaining
-   * licence/profile selection.
+   * Clear vehicle inputs while
+   * retaining licence/profile
+   * selection.
    */
   function resetForm() {
     setSelectedAxleConfigId('');
     setSelectedMassScheme('');
     setOperatingMass('');
 
+    setSelectedGoodsType('');
+
     setUseCustomDimensions(false);
+
     setCustomWidth('');
     setCustomHeight('');
     setCustomLength('');
 
-    const resetAnswers: Record<
-      string,
-      ExtraAnswerValue
-    > = {};
+    const resetAnswers:
+      Record<
+        string,
+        ExtraAnswerValue
+      > = {};
 
-    templateQuestions.forEach((question) => {
-      resetAnswers[question.name] = '';
-    });
+    templateQuestions.forEach(
+      (question) => {
+        resetAnswers[
+          question.name
+        ] = '';
+      }
+    );
 
-    setExtraAnswers(resetAnswers);
+    setExtraAnswers(
+      resetAnswers
+    );
 
     setResult(null);
     setError('');
+
+    /*
+     * clearAppliedVehicle also
+     * clears routingPreset.
+     */
+    clearAppliedVehicle();
   }
+
 
   function formatClassification(
     classification: string
   ) {
-    if (classification === 'general_access') {
+    if (
+      classification ===
+      'general_access'
+    ) {
       return 'General Access';
     }
 
-    if (classification === 'class_1') {
+    if (
+      classification ===
+      'class_1'
+    ) {
       return 'Class 1';
     }
 
-    if (classification === 'class_2') {
+    if (
+      classification ===
+      'class_2'
+    ) {
       return 'Class 2';
     }
 
-    if (classification === 'class_3') {
+    if (
+      classification ===
+      'class_3'
+    ) {
       return 'Class 3';
     }
 
-    if (classification === 'invalid_input') {
+    if (
+      classification ===
+      'invalid_input'
+    ) {
       return 'Invalid Input';
     }
 
-    if (classification === 'unknown') {
+    if (
+      classification ===
+      'unknown'
+    ) {
       return 'Unknown';
     }
 
     return classification;
   }
 
+
   function classificationIsPass(
     classification: string
   ) {
     return (
-      classification !== 'class_3' &&
-      classification !== 'invalid_input' &&
-      classification !== 'unknown'
+      classification !==
+        'class_3' &&
+      classification !==
+        'invalid_input' &&
+      classification !==
+        'unknown'
     );
   }
+
 
   return (
     <div className="p-4">
@@ -863,7 +1400,9 @@ export const VehicleCompliance = () => {
         </p>
       </div>
 
+
       <div className="flex flex-col gap-5">
+
         {/* Licence */}
         <div className="flex flex-col gap-2">
           <label
@@ -876,7 +1415,9 @@ export const VehicleCompliance = () => {
           <select
             id="licence-class"
             value={licenceClass}
-            onChange={handleLicenceChange}
+            onChange={
+              handleLicenceChange
+            }
             className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm text-foreground outline-none focus:ring-2 focus:ring-ring"
           >
             <option value="">
@@ -906,12 +1447,13 @@ export const VehicleCompliance = () => {
 
           {user?.licence_class_id &&
             licenceClass ===
-            user.licence_class_id && (
+              user.licence_class_id && (
               <p className="text-xs text-muted-foreground">
                 Using your saved licence class
               </p>
             )}
         </div>
+
 
         {/* Profile */}
         {licenceClass && (
@@ -925,9 +1467,15 @@ export const VehicleCompliance = () => {
 
             <select
               id="vehicle-profile"
-              value={selectedProfileId}
-              onChange={handleProfileChange}
-              disabled={profilesLoading}
+              value={
+                selectedProfileId
+              }
+              onChange={
+                handleProfileChange
+              }
+              disabled={
+                profilesLoading
+              }
               className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm text-foreground outline-none disabled:cursor-not-allowed disabled:opacity-50 focus:ring-2 focus:ring-ring"
             >
               <option value="">
@@ -936,19 +1484,27 @@ export const VehicleCompliance = () => {
                   : '— Select vehicle profile —'}
               </option>
 
-              {profiles.map((profile) => (
-                <option
-                  key={profile.profile_id}
-                  value={profile.profile_id}
-                >
-                  {profile.display_name}
-                </option>
-              ))}
+              {profiles.map(
+                (profile) => (
+                  <option
+                    key={
+                      profile.profile_id
+                    }
+                    value={
+                      profile.profile_id
+                    }
+                  >
+                    {
+                      profile.display_name
+                    }
+                  </option>
+                )
+              )}
             </select>
 
             {user?.favourite_profile_id &&
               selectedProfileId ===
-              user.favourite_profile_id && (
+                user.favourite_profile_id && (
                 <p className="text-xs text-muted-foreground">
                   Using your favourite vehicle profile
                 </p>
@@ -956,12 +1512,14 @@ export const VehicleCompliance = () => {
           </div>
         )}
 
+
         {/* Loading */}
         {formLoading && (
           <div className="rounded-md bg-muted p-3 text-sm text-muted-foreground">
             Loading vehicle information...
           </div>
         )}
+
 
         {/* Axle */}
         {vehicleFormData && (
@@ -975,27 +1533,40 @@ export const VehicleCompliance = () => {
 
             <select
               id="axle-configuration"
-              value={selectedAxleConfigId}
-              onChange={handleAxleChange}
+              value={
+                selectedAxleConfigId
+              }
+              onChange={
+                handleAxleChange
+              }
               className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm text-foreground outline-none focus:ring-2 focus:ring-ring"
             >
               <option value="">
                 — Select axle configuration —
               </option>
 
-              {vehicleFormData.axle_configurations.map(
-                (config) => (
-                  <option
-                    key={config.config_id}
-                    value={config.config_id}
-                  >
-                    {config.display_name}
-                  </option>
-                )
-              )}
+              {vehicleFormData
+                .axle_configurations
+                .map(
+                  (config) => (
+                    <option
+                      key={
+                        config.config_id
+                      }
+                      value={
+                        config.config_id
+                      }
+                    >
+                      {
+                        config.display_name
+                      }
+                    </option>
+                  )
+                )}
             </select>
 
-            {vehicleFormData.axle_configurations
+            {vehicleFormData
+              .axle_configurations
               .length === 0 && (
                 <p className="text-xs text-muted-foreground">
                   No axle configurations are available.
@@ -1003,6 +1574,7 @@ export const VehicleCompliance = () => {
               )}
           </div>
         )}
+
 
         {/* Mass limits */}
         {currentAxleConfig && (
@@ -1030,41 +1602,52 @@ export const VehicleCompliance = () => {
                 </thead>
 
                 <tbody>
-                  {currentAxleConfig.mass_limits.map(
-                    (limit) => (
-                      <tr
-                        key={limit.mass_scheme_id}
-                        className="border-t border-border"
-                      >
-                        <td className="px-3 py-2">
-                          {limit.mass_scheme_id}
-                        </td>
+                  {currentAxleConfig
+                    .mass_limits
+                    .map(
+                      (limit) => (
+                        <tr
+                          key={
+                            limit.mass_scheme_id
+                          }
+                          className="border-t border-border"
+                        >
+                          <td className="px-3 py-2">
+                            {
+                              limit.mass_scheme_id
+                            }
+                          </td>
 
-                        <td className="px-3 py-2 text-muted-foreground">
-                          {limit.mass_limit_t !== null
-                            ? `${limit.mass_limit_t} t`
-                            : '—'}
-                        </td>
+                          <td className="px-3 py-2 text-muted-foreground">
+                            {limit.mass_limit_t !==
+                            null
+                              ? `${limit.mass_limit_t} t`
+                              : '—'}
+                          </td>
 
-                        <td className="px-3 py-2 text-muted-foreground">
-                          {limit.applicable
-                            ? 'Applicable'
-                            : 'Not applicable'}
-                        </td>
-                      </tr>
-                    )
-                  )}
+                          <td className="px-3 py-2 text-muted-foreground">
+                            {limit.applicable
+                              ? 'Applicable'
+                              : 'Not applicable'}
+                          </td>
+                        </tr>
+                      )
+                    )}
                 </tbody>
               </table>
             </div>
 
             {currentAxleConfig.note && (
               <p className="mt-2 text-xs text-muted-foreground">
-                Note: {currentAxleConfig.note}
+                Note:{' '}
+                {
+                  currentAxleConfig.note
+                }
               </p>
             )}
           </div>
         )}
+
 
         {/* Mass scheme */}
         {currentAxleConfig && (
@@ -1078,13 +1661,18 @@ export const VehicleCompliance = () => {
 
             <select
               id="mass-scheme"
-              value={selectedMassScheme}
+              value={
+                selectedMassScheme
+              }
               onChange={(event) => {
                 setSelectedMassScheme(
                   event.target.value
                 );
+
                 setResult(null);
                 setError('');
+
+                clearAppliedVehicle();
               }}
               className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm outline-none focus:ring-2 focus:ring-ring"
             >
@@ -1092,18 +1680,31 @@ export const VehicleCompliance = () => {
                 — Select mass scheme —
               </option>
 
-              {applicableMassLimits.map((limit) => (
-                <option
-                  key={limit.mass_scheme_id}
-                  value={limit.mass_scheme_id}
-                >
-                  {limit.mass_scheme_id} — max{' '}
-                  {limit.mass_limit_t} t
-                </option>
-              ))}
+              {applicableMassLimits.map(
+                (limit) => (
+                  <option
+                    key={
+                      limit.mass_scheme_id
+                    }
+                    value={
+                      limit.mass_scheme_id
+                    }
+                  >
+                    {
+                      limit.mass_scheme_id
+                    }{' '}
+                    — max{' '}
+                    {
+                      limit.mass_limit_t
+                    }{' '}
+                    t
+                  </option>
+                )
+              )}
             </select>
           </div>
         )}
+
 
         {/* Operating mass */}
         {currentAxleConfig && (
@@ -1121,12 +1722,17 @@ export const VehicleCompliance = () => {
                 type="number"
                 min="0"
                 step="0.1"
-                value={operatingMass}
+                value={
+                  operatingMass
+                }
                 onChange={(event) => {
                   setOperatingMass(
                     event.target.value
                   );
+
                   setResult(null);
+
+                  clearAppliedVehicle();
                 }}
                 placeholder="e.g. 67"
                 className="h-10 w-full rounded-md border border-input bg-background px-3 pr-20 text-sm outline-none placeholder:text-muted-foreground focus:ring-2 focus:ring-ring"
@@ -1139,6 +1745,7 @@ export const VehicleCompliance = () => {
           </div>
         )}
 
+
         {/* Default dimensions */}
         {vehicleFormData && (
           <div>
@@ -1147,6 +1754,7 @@ export const VehicleCompliance = () => {
             </h4>
 
             <div className="overflow-hidden rounded-md border border-border">
+
               <div className="flex justify-between border-b border-border px-3 py-2 text-sm">
                 <span className="text-muted-foreground">
                   Width
@@ -1154,12 +1762,14 @@ export const VehicleCompliance = () => {
 
                 <span className="font-medium">
                   {
-                    vehicleFormData.profile
+                    vehicleFormData
+                      .profile
                       .default_width_m
                   }{' '}
                   m
                 </span>
               </div>
+
 
               <div className="flex justify-between border-b border-border px-3 py-2 text-sm">
                 <span className="text-muted-foreground">
@@ -1168,12 +1778,14 @@ export const VehicleCompliance = () => {
 
                 <span className="font-medium">
                   {
-                    vehicleFormData.profile
+                    vehicleFormData
+                      .profile
                       .default_height_m
                   }{' '}
                   m
                 </span>
               </div>
+
 
               <div className="flex justify-between px-3 py-2 text-sm">
                 <span className="text-muted-foreground">
@@ -1182,15 +1794,18 @@ export const VehicleCompliance = () => {
 
                 <span className="font-medium">
                   {
-                    vehicleFormData.profile
+                    vehicleFormData
+                      .profile
                       .default_length_m
                   }{' '}
                   m
                 </span>
               </div>
+
             </div>
           </div>
         )}
+
 
         {/* Custom dimensions */}
         {vehicleFormData && (
@@ -1205,15 +1820,20 @@ export const VehicleCompliance = () => {
             <select
               id="custom-dimensions"
               value={
-                useCustomDimensions ? 'yes' : 'no'
+                useCustomDimensions
+                  ? 'yes'
+                  : 'no'
               }
               onChange={(event) => {
                 setUseCustomDimensions(
-                  event.target.value === 'yes'
+                  event.target.value ===
+                    'yes'
                 );
 
                 setResult(null);
                 setError('');
+
+                clearAppliedVehicle();
               }}
               className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm outline-none focus:ring-2 focus:ring-ring"
             >
@@ -1228,19 +1848,26 @@ export const VehicleCompliance = () => {
           </div>
         )}
 
+
         {/* Custom dimension fields */}
         {vehicleFormData &&
           useCustomDimensions && (
             <div className="flex flex-col gap-4">
+
               {dimensionRanges && (
                 <div className="rounded-md bg-muted p-3">
+
                   <p className="mb-2 text-xs font-medium">
                     Allowed Dimension Ranges
                   </p>
 
                   <div className="flex flex-col gap-1 text-xs text-muted-foreground">
+
                     <div className="flex justify-between">
-                      <span>Width</span>
+                      <span>
+                        Width
+                      </span>
+
                       <span>
                         {
                           dimensionRanges.min_width_m
@@ -1253,8 +1880,12 @@ export const VehicleCompliance = () => {
                       </span>
                     </div>
 
+
                     <div className="flex justify-between">
-                      <span>Height</span>
+                      <span>
+                        Height
+                      </span>
+
                       <span>
                         {
                           dimensionRanges.min_height_m
@@ -1267,8 +1898,12 @@ export const VehicleCompliance = () => {
                       </span>
                     </div>
 
+
                     <div className="flex justify-between">
-                      <span>Length</span>
+                      <span>
+                        Length
+                      </span>
+
                       <span>
                         {
                           dimensionRanges.min_length_m
@@ -1280,9 +1915,11 @@ export const VehicleCompliance = () => {
                         m
                       </span>
                     </div>
+
                   </div>
                 </div>
               )}
+
 
               {/* Width */}
               <div className="flex flex-col gap-2">
@@ -1299,17 +1936,24 @@ export const VehicleCompliance = () => {
                     type="number"
                     step="0.1"
                     min={
-                      dimensionRanges?.min_width_m
+                      dimensionRanges
+                        ?.min_width_m
                     }
                     max={
-                      dimensionRanges?.max_width_m
+                      dimensionRanges
+                        ?.max_width_m
                     }
-                    value={customWidth}
+                    value={
+                      customWidth
+                    }
                     onChange={(event) => {
                       setCustomWidth(
                         event.target.value
                       );
+
                       setResult(null);
+
+                      clearAppliedVehicle();
                     }}
                     placeholder="Width"
                     className="h-10 w-full rounded-md border border-input bg-background px-3 pr-10 text-sm outline-none focus:ring-2 focus:ring-ring"
@@ -1320,6 +1964,7 @@ export const VehicleCompliance = () => {
                   </span>
                 </div>
               </div>
+
 
               {/* Height */}
               <div className="flex flex-col gap-2">
@@ -1336,17 +1981,24 @@ export const VehicleCompliance = () => {
                     type="number"
                     step="0.1"
                     min={
-                      dimensionRanges?.min_height_m
+                      dimensionRanges
+                        ?.min_height_m
                     }
                     max={
-                      dimensionRanges?.max_height_m
+                      dimensionRanges
+                        ?.max_height_m
                     }
-                    value={customHeight}
+                    value={
+                      customHeight
+                    }
                     onChange={(event) => {
                       setCustomHeight(
                         event.target.value
                       );
+
                       setResult(null);
+
+                      clearAppliedVehicle();
                     }}
                     placeholder="Height"
                     className="h-10 w-full rounded-md border border-input bg-background px-3 pr-10 text-sm outline-none focus:ring-2 focus:ring-ring"
@@ -1357,6 +2009,7 @@ export const VehicleCompliance = () => {
                   </span>
                 </div>
               </div>
+
 
               {/* Length */}
               <div className="flex flex-col gap-2">
@@ -1373,17 +2026,24 @@ export const VehicleCompliance = () => {
                     type="number"
                     step="0.1"
                     min={
-                      dimensionRanges?.min_length_m
+                      dimensionRanges
+                        ?.min_length_m
                     }
                     max={
-                      dimensionRanges?.max_length_m
+                      dimensionRanges
+                        ?.max_length_m
                     }
-                    value={customLength}
+                    value={
+                      customLength
+                    }
                     onChange={(event) => {
                       setCustomLength(
                         event.target.value
                       );
+
                       setResult(null);
+
+                      clearAppliedVehicle();
                     }}
                     placeholder="Length"
                     className="h-10 w-full rounded-md border border-input bg-background px-3 pr-10 text-sm outline-none focus:ring-2 focus:ring-ring"
@@ -1394,58 +2054,75 @@ export const VehicleCompliance = () => {
                   </span>
                 </div>
               </div>
+
             </div>
           )}
 
+
         {/* Additional Questions */}
-        {templateQuestions.length > 0 && (
+        {templateQuestions.length >
+          0 && (
           <div className="flex flex-col gap-4">
+
             <div>
               <h4 className="text-sm font-medium text-foreground">
                 Additional Questions
               </h4>
 
               <p className="mt-1 text-xs text-muted-foreground">
-                Additional information required for
-                this vehicle type.
+                Additional information required for this
+                vehicle type.
               </p>
             </div>
+
 
             {templateQuestions.map(
               (question) => {
                 const answer =
-                  extraAnswers[question.name];
+                  extraAnswers[
+                    question.name
+                  ];
 
                 return (
                   <div
-                    key={question.name}
+                    key={
+                      question.name
+                    }
                     className="flex flex-col gap-2"
                   >
                     <label
                       htmlFor={`question-${question.name}`}
                       className="text-sm font-medium"
                     >
-                      {question.label}
+                      {
+                        question.label
+                      }
                     </label>
 
-                    {question.type === 'bool' ? (
+
+                    {question.type ===
+                    'bool' ? (
                       <select
                         id={`question-${question.name}`}
                         value={
                           answer === true
                             ? 'true'
-                            : answer === false
+                            : answer ===
+                                false
                               ? 'false'
                               : ''
                         }
                         onChange={(event) => {
                           handleExtraAnswer(
                             question,
-                            event.target.value
+                            event.target
+                              .value
                           );
 
                           setResult(null);
                           setError('');
+
+                          clearAppliedVehicle();
                         }}
                         className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm outline-none focus:ring-2 focus:ring-ring"
                       >
@@ -1468,18 +2145,21 @@ export const VehicleCompliance = () => {
                         step="0.1"
                         value={
                           typeof answer ===
-                            'string'
+                          'string'
                             ? answer
                             : ''
                         }
                         onChange={(event) => {
                           handleExtraAnswer(
                             question,
-                            event.target.value
+                            event.target
+                              .value
                           );
 
                           setResult(null);
                           setError('');
+
+                          clearAppliedVehicle();
                         }}
                         className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm outline-none focus:ring-2 focus:ring-ring"
                       />
@@ -1488,8 +2168,38 @@ export const VehicleCompliance = () => {
                 );
               }
             )}
+
           </div>
         )}
+
+
+        {/* Goods */}
+        {vehicleFormData &&
+          currentAxleConfig && (
+            <GoodsCompliance
+              value={
+                selectedGoodsType
+              }
+              onChange={(
+                goodsTypeId
+              ) => {
+                setSelectedGoodsType(
+                  goodsTypeId
+                );
+
+                /*
+                 * Changing goods makes
+                 * the previous compliance /
+                 * routing result stale.
+                 */
+                setResult(null);
+                setError('');
+
+                clearAppliedVehicle();
+              }}
+            />
+          )}
+
 
         {/* Error */}
         {error && (
@@ -1504,13 +2214,19 @@ export const VehicleCompliance = () => {
           </div>
         )}
 
+
         {/* Actions */}
         {vehicleFormData && (
           <div className="flex flex-col gap-2 border-t border-border pt-5">
+
             <button
               type="button"
-              onClick={classifyAndValidate}
-              disabled={submitting}
+              onClick={
+                classifyAndValidate
+              }
+              disabled={
+                submitting
+              }
               className="h-10 w-full rounded-md bg-primary px-4 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-50"
             >
               {submitting
@@ -1518,54 +2234,67 @@ export const VehicleCompliance = () => {
                 : 'Classify + Validate Mass'}
             </button>
 
+
             <button
               type="button"
-              onClick={resetForm}
-              disabled={submitting}
+              onClick={
+                resetForm
+              }
+              disabled={
+                submitting
+              }
               className="h-10 w-full rounded-md border border-border bg-background px-4 text-sm font-medium transition-colors hover:bg-accent disabled:opacity-50"
             >
               Reset Form
             </button>
+
           </div>
         )}
+
 
         {/* Results */}
         {result && (
           <div className="flex flex-col gap-3 border-t border-border pt-5">
+
             <div>
               <h4 className="text-base font-semibold">
                 Compliance Result
               </h4>
 
               <p className="mt-1 text-xs text-muted-foreground">
-                Vehicle classification and mass
-                validation.
+                Vehicle classification and mass validation.
               </p>
             </div>
+
 
             {/* Mass result */}
             <div
               className={
-                result.mass_validation_result
+                result
+                  .mass_validation_result
                   .compliant
                   ? 'rounded-md border border-green-500/30 bg-green-500/10 p-4'
                   : 'rounded-md border border-destructive/30 bg-destructive/10 p-4'
               }
             >
               <div className="flex items-start gap-3">
+
                 <div
                   className={
-                    result.mass_validation_result
+                    result
+                      .mass_validation_result
                       .compliant
                       ? 'flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-green-600 text-sm font-bold text-white'
                       : 'flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-destructive text-sm font-bold text-white'
                   }
                 >
-                  {result.mass_validation_result
+                  {result
+                    .mass_validation_result
                     .compliant
                     ? '✓'
                     : '!'}
                 </div>
+
 
                 <div>
                   <p className="text-sm font-semibold">
@@ -1584,25 +2313,30 @@ export const VehicleCompliance = () => {
                     }
                   </p>
                 </div>
+
               </div>
             </div>
+
 
             {/* Classification */}
             <div
               className={
                 classificationIsPass(
-                  result.classification_result
+                  result
+                    .classification_result
                     .classification
                 )
                   ? 'rounded-md border border-green-500/30 bg-green-500/10 p-4'
-                  : result.classification_result
-                    .classification ===
-                    'class_3'
+                  : result
+                        .classification_result
+                        .classification ===
+                      'class_3'
                     ? 'rounded-md border border-amber-500/30 bg-amber-500/10 p-4'
                     : 'rounded-md border border-destructive/30 bg-destructive/10 p-4'
               }
             >
               <div className="flex items-start gap-3">
+
                 <div
                   className={
                     classificationIsPass(
@@ -1612,20 +2346,22 @@ export const VehicleCompliance = () => {
                     )
                       ? 'flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-green-600 text-sm font-bold text-white'
                       : result
-                        .classification_result
-                        .classification ===
-                        'class_3'
+                            .classification_result
+                            .classification ===
+                          'class_3'
                         ? 'flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-amber-500 text-sm font-bold text-white'
                         : 'flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-destructive text-sm font-bold text-white'
                   }
                 >
                   {classificationIsPass(
-                    result.classification_result
+                    result
+                      .classification_result
                       .classification
                   )
                     ? '✓'
                     : '!'}
                 </div>
+
 
                 <div>
                   <p className="text-sm font-semibold">
@@ -1645,30 +2381,50 @@ export const VehicleCompliance = () => {
                     }
                   </p>
                 </div>
+
               </div>
             </div>
 
-            {/* Warnings */}
-            {result.classification_result
-              .warnings.length > 0 && (
-                <div className="rounded-md border border-amber-500/30 bg-amber-500/10 p-3">
-                  <p className="text-sm font-medium">
-                    Warnings
-                  </p>
 
-                  <ul className="mt-2 list-disc space-y-1 pl-4 text-xs text-muted-foreground">
-                    {result.classification_result.warnings.map(
-                      (warning, index) => (
-                        <li key={index}>
-                          {warning}
+            {/* Warnings */}
+            {result
+              .classification_result
+              .warnings.length >
+              0 && (
+              <div className="rounded-md border border-amber-500/30 bg-amber-500/10 p-3">
+
+                <p className="text-sm font-medium">
+                  Warnings
+                </p>
+
+                <ul className="mt-2 list-disc space-y-1 pl-4 text-xs text-muted-foreground">
+                  {result
+                    .classification_result
+                    .warnings
+                    .map(
+                      (
+                        warning,
+                        index
+                      ) => (
+                        <li
+                          key={
+                            index
+                          }
+                        >
+                          {
+                            warning
+                          }
                         </li>
                       )
                     )}
-                  </ul>
-                </div>
-              )}
+                </ul>
+
+              </div>
+            )}
+
           </div>
         )}
+
       </div>
     </div>
   );
