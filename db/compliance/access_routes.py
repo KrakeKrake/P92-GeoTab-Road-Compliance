@@ -59,7 +59,6 @@ def request_network_access():
         """).bindparams(bindparam("networks", expanding=True))
         result = conn.execute(stmt, {"networks": networks})
         rows = result.fetchall()
-    print(rows)
 
     return jsonify(format_response(rows))
 
