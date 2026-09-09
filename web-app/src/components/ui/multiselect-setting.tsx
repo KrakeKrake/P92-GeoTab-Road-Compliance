@@ -25,6 +25,7 @@ interface SelectSettingProps {
   description: string;
   value: string[];
   options: string[];
+  optionLabels?: Record<string, string>;
   onValueChange: (values: string[]) => void;
 }
 
@@ -34,8 +35,12 @@ export const MultiSelectSetting = ({
   description,
   value,
   options,
+  optionLabels = {},
   onValueChange,
 }: SelectSettingProps) => {
+    const getDisplayLabel = (item: string) => {
+    return optionLabels[item] ?? item;
+  };
   return (
     <div className="flex flex-col gap-1 py-1">
       <div className="flex items-center gap-1.5">
@@ -69,7 +74,7 @@ export const MultiSelectSetting = ({
         <ComboboxChips>
           <ComboboxValue>
             {value.map((item) => (
-              <ComboboxChip key={item}>{item}</ComboboxChip>
+              <ComboboxChip key={item}>{getDisplayLabel(item)}</ComboboxChip>
             ))}
           </ComboboxValue>
           <ComboboxChipsInput placeholder="" />
@@ -79,7 +84,7 @@ export const MultiSelectSetting = ({
           <ComboboxList>
             {(item) => (
               <ComboboxItem key={item} value={item}>
-                {item}
+                {getDisplayLabel(item)}
               </ComboboxItem>
             )}
           </ComboboxList>
