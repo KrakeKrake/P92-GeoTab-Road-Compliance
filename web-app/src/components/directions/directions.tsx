@@ -27,7 +27,23 @@ import {
 import { useCommonStore } from '@/stores/common-store';
 import { MultiSelectSetting } from '@/components/ui/multiselect-setting';
 import { NHVR_NETWORK_OPTIONS } from '@/components/settings-panel/settings-options';
+import { useComplianceStore } from '@/stores/compliance-store';
+const VEHICLE_TO_NHVR_NETWORK: Record<string, string> = {
+  B_DOUBLE: 'B_DOUBLE',
+  TYPE_1_ROAD_TRAIN: 'Vic Road Train Gazetted (Ref 1)',
+  TYPE_2_ROAD_TRAIN: 'Vic Road Train Gazetted (Ref 1)',
+};
 
+const COMPLIANCE_TO_NHVR_NETWORK: Record<string, string> = {
+  GHMS_B_DOUBLE: 'GHMS_B_DOUBLE',
+  GHMS_RIGID_SEMI: 'GHMS_SEMI_TRAILERS',
+  ROAD_TRAIN_HAY_GRAIN: 'Vic Road Train Hay & Grain Pre-Approved (Ref 2)',
+  EMERGENCY_DROUGHT_NETWORK: '28361546',
+};
+
+const NHVR_NETWORK_LABELS: Record<string, string> = {
+  '28361546': 'Emergency Drought Network',
+};
 export const DirectionsControl = () => {
   const waypoints = useDirectionsStore((state) => state.waypoints);
   const results = useDirectionsStore((state) => state.results);
@@ -52,6 +68,69 @@ export const DirectionsControl = () => {
   const { profile } = useSearch({ from: '/$activeTab' });
   const settings = useCommonStore((state) => state.settings);
   const updateSettings = useCommonStore((state) => state.updateSettings);
+  const routingPreset = useComplianceStore((state) => state.routingPreset);
+  const appliedVehicle = useComplianceStore(
+    (state) => state.appliedVehicle
+  );
+useEffect(() => {
+    if (profile !== 'truck') return;
+
+    const overrideKey = routingPreset?.networkOverrideKey;
+
+    // 1. Goods-specific network takes priority.
+    const overrideNetwork = overrideKey
+      ? COMPLIANCE_TO_NHVR_NETWORK[overrideKey]
+      : undefined;
+
+    // 2. Otherwise use the vehicle's normal/base network.
+    const baseNetwork = appliedVehicle?.templateId
+      ? VEHICLE_TO_NHVR_NETWORK[appliedVehicle.templateId]
+      : undefined;
+
+    const networkName = overrideNetwork ?? baseNetwork;
+
+    // No network rule for this vehicle yet.
+    if (!networkName) return;
+
+    const alreadyApplied =
+      settings.nhvr_networks.length === 1 &&
+      settings.nhvr_networks[0] === networkName;
+
+    if (alreadyApplied) return;
+
+    updateSettings('nhvr_networks', [networkName]);
+    refetchDirections();
+  }, [
+    routingPreset?.networkOverrideKey,
+    appliedVehicle?.templateId,
+    profile,
+    settings.nhvr_networks,
+    updateSettings,
+    refetchDirections,
+  ]);
+  useEffect(() => {
+  if (profile !== 'truck') return;
+
+  const carryingDangerousGoods =
+    routingPreset?.goodsTypeId === 'DANGEROUS_GOODS';
+
+  if (settings.hazmat === carryingDangerousGoods) {
+    return;
+  }
+
+  updateSettings(
+    'hazmat',
+    carryingDangerousGoods
+  );
+
+  refetchDirections();
+}, [
+  routingPreset?.goodsTypeId,
+  profile,
+  settings.hazmat,
+  updateSettings,
+  refetchDirections,
+]);
   useEffect(() => {
     if (urlParamsProcessed.current) return;
 
@@ -128,6 +207,7 @@ export const DirectionsControl = () => {
             description="The NHVR network to use for routing"
             value={settings.nhvr_networks}
             options={NHVR_NETWORK_OPTIONS}
+            optionLabels={NHVR_NETWORK_LABELS}
             onValueChange={(value) => {
               updateSettings('nhvr_networks', value);
               refetchDirections();
