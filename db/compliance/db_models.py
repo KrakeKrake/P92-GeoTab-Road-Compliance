@@ -1,4 +1,4 @@
-from sqlalchemy import Boolean, Column, ForeignKey, Integer, Numeric, Text, TIMESTAMP
+from sqlalchemy import Boolean, Column, DateTime, ForeignKey, Integer, Numeric, Text, func
 from .database import Base
 
 class LicenceClass(Base):
@@ -184,15 +184,121 @@ class InputSanityRange(Base):
     min_length_m = Column(Numeric(5, 2), nullable=False)
     max_length_m = Column(Numeric(5, 2), nullable=False)
 
+class GoodsType(Base):
+    __tablename__ = "goods_types"
+    __table_args__ = {"schema": "compliance"}
+
+    goods_type_id = Column(Text, primary_key=True)
+    display_name = Column(Text, nullable=False)
+    description = Column(Text)
+
+
+class GoodsNetworkRule(Base):
+    __tablename__ = "goods_network_rules"
+    __table_args__ = {"schema": "compliance"}
+
+    goods_network_rule_id = Column(
+        Integer,
+        primary_key=True,
+        index=True
+    )
+
+    goods_type_id = Column(
+        Text,
+        ForeignKey("compliance.goods_types.goods_type_id"),
+        nullable=False
+    )
+
+    template_id = Column(
+        Text,
+        ForeignKey("compliance.vehicle_templates.template_id")
+    )
+
+    axle_config_id = Column(
+        Text,
+        ForeignKey("compliance.axle_configurations.axle_config_id")
+    )
+
+    vehicle_classification = Column(Text)
+    access_path = Column(Text)
+
+    network_override_key = Column(Text)
+
+    priority = Column(Integer, default=100)
+    active = Column(Boolean, default=True)
+    note = Column(Text)
+
+
+class RoutingRestriction(Base):
+    __tablename__ = "routing_restrictions"
+    __table_args__ = {"schema": "compliance"}
+
+    restriction_id = Column(Text, primary_key=True)
+    restriction_name = Column(Text, nullable=False)
+
+    source = Column(Text, nullable=False)
+    restriction_type = Column(Text, nullable=False)
+
+    geometry_ref = Column(Text)
+
+    is_derived = Column(Boolean, default=False)
+    provenance_note = Column(Text)
+
+    active = Column(Boolean, default=True)
+
+
+class GoodsRestrictionRule(Base):
+    __tablename__ = "goods_restriction_rules"
+    __table_args__ = {"schema": "compliance"}
+
+    goods_restriction_rule_id = Column(
+        Integer,
+        primary_key=True,
+        index=True
+    )
+
+    goods_type_id = Column(
+        Text,
+        ForeignKey("compliance.goods_types.goods_type_id"),
+        nullable=False
+    )
+
+    restriction_id = Column(
+        Text,
+        ForeignKey("compliance.routing_restrictions.restriction_id"),
+        nullable=False
+    )
+
+    condition_code = Column(Text)
+
+    priority = Column(Integer, default=100)
+    active = Column(Boolean, default=True)
+    note = Column(Text)
 
 class User(Base):
     __tablename__ = "users"
     __table_args__ = {"schema": "account"}
 
     user_id = Column(Integer, primary_key=True, index=True)
+
     email = Column(Text, nullable=False, unique=True)
     username = Column(Text, nullable=False, unique=True)
     password_hash = Column(Text, nullable=False)
-    licence_class_id = Column(Text, ForeignKey("compliance.licence_classes.licence_class_id"))
-    favourite_profile_id = Column(Text, ForeignKey("compliance.vehicle_profiles.profile_id"))
-    created_at = Column(TIMESTAMP)
+
+    licence_class_id = Column(
+        Text,
+        ForeignKey("compliance.licence_classes.licence_class_id")
+    )
+
+    favourite_profile_id = Column(
+        Text,
+        ForeignKey("compliance.vehicle_profiles.profile_id")
+    )
+
+    created_at = Column(
+        DateTime,
+        server_default=func.now(),
+        nullable=False
+    )
+
+    
