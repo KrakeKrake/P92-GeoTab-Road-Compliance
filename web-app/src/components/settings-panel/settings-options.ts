@@ -306,6 +306,12 @@ export const NHVR_NETWORK_OPTIONS: string[] = [
   'VIC - HPLV 36.5m Tri-Dolly A-Double',
   'CONTROLLED_ACCESS_BUS',
   'DELWP_NON_EMERGENCY_4M',
+  'GHMS_B_DOUBLE',
+  'B_DOUBLE',
+  'GHMS_SEMI_TRAILERS',
+  'Vic Road Train Hay & Grain Pre-Approved (Ref 2)',
+  '28361546',
+  'Vic Road Train Gazetted (Ref 1)',
 ];
 
 const nhvrNetworks = {
