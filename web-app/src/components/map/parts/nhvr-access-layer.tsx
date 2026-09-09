@@ -53,7 +53,7 @@ export function NetworkAccessLayer() {
             '#ffef2d',
             'rgba(0,0,0,0)',
           ],
-          'line-width': 5,
+          'line-width': 12,
           'line-opacity': 0.9,
         }}
       />
