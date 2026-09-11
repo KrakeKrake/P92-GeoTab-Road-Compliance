@@ -1,7 +1,7 @@
 services:
   valhalla:
     build:
-      context: /home/krake/Sync/Work/Uni/EAT40006/valhalla
+      context: ../
       dockerfile: docker/Dockerfile-nhvr
     image: valhalla:nhvr
     container_name: valhalla-nhvr

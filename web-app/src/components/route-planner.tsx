@@ -45,6 +45,7 @@ export const RoutePlanner = () => {
   const directionsPanelOpen = useCommonStore(
     (state) => state.directionsPanelOpen
   );
+  useCommonStore((state) => state.loading);
   const isNavigating = useNavigationStore((s) => s.isNavigating);
   const { refetch: refetchDirections } = useDirectionsQuery();
   const { refetch: refetchIsochrones } = useIsochronesQuery();
@@ -56,26 +57,6 @@ export const RoutePlanner = () => {
   const handleTabChange = (value: string) => {
     navigate({ params: { activeTab: value } });
   };
-
-  const handleProfileChange = (value: Profile) => {
-    navigate({
-      search: (prev) => ({ ...prev, profile: value }),
-      replace: true,
-    });
-
-    if (activeTab === 'isochrones') {
-      refetchIsochrones();
-      setTimeout(() => {
-        refetchDirections();
-      }, 1000);
-    } else {
-      refetchDirections();
-      setTimeout(() => {
-        refetchIsochrones();
-      }, 1000);
-    }
-  };
-
   return (
     <Sheet open={directionsPanelOpen && !isNavigating} modal={false}>
       <Tabs
@@ -118,15 +99,6 @@ export const RoutePlanner = () => {
               {tabConfig.description}
             </SheetDescription>
           </SheetHeader>
-
-          {activeTab !== 'tiles' && (
-            <div className="px-2 mb-1">
-              <ProfilePicker
-                loading={loading}
-                onProfileChange={handleProfileChange}
-              />
-            </div>
-          )}
 
           <TabsContent value="directions" className="flex flex-col gap-3 px-2">
             <DirectionsControl />

@@ -39,6 +39,13 @@ import {
   DOUBLE_TAP_THRESHOLD_MS,
 } from './constants';
 import type { MapStyleType } from './types';
+import {
+  NetworkAccessLayer,
+  NETWORK_ACCESS_LAYER_ID,
+  NETWORK_ACCESS_HIT_TARGET_LAYER_ID,
+} from './parts/nhvr-access-layer';
+import { NetworkAccessPopup } from './parts/network-access-popup';
+import { useNetworkAccessStore } from '@/stores/nhvr-store';
 import { RouteLines } from './parts/route-lines';
 import { HighlightSegment } from './parts/highlight-segment';
 import { IsochronePolygons } from './parts/isochrone-polygons';
@@ -148,6 +155,11 @@ export const MapComponent = () => {
     lng: number;
     lat: number;
     features: MapGeoJSONFeature[];
+  } | null>(null);
+  const [networkPopup, setNetworkPopup] = useState<{
+    lng: number;
+    lat: number;
+    wayId: string;
   } | null>(null);
   const [viewState, setViewState] = useState({
     longitude: center[0],
@@ -783,10 +795,36 @@ export const MapComponent = () => {
 
   const handleMouseMove = useCallback(
     (event: maplibregl.MapLayerMouseEvent) => {
-      if (!mapRef.current || showInfoPopup) return; // Don't show if click popup is visible
+      if (!mapRef.current || showInfoPopup) return;
 
       const features = event.features;
-      // Check if we're hovering over the routes-line / hit-target layer
+      const map = mapRef.current.getMap();
+
+      const networkFeature = features?.find(
+        (f) =>
+          f.layer?.id === NETWORK_ACCESS_LAYER_ID ||
+          f.layer?.id === NETWORK_ACCESS_HIT_TARGET_LAYER_ID
+      );
+      const wayId = networkFeature
+        ? String(networkFeature.properties?.osm_id ?? '')
+        : '';
+      const hasCondition = wayId
+        ? (useNetworkAccessStore.getState().networks[wayId] ?? []).some(
+            (e) => e.access === 'restricted' || e.access === 'conditional'
+          )
+        : false;
+
+      if (wayId && hasCondition) {
+        map.getCanvas().style.cursor = 'pointer';
+        setNetworkPopup({
+          lng: event.lngLat.lng,
+          lat: event.lngLat.lat,
+          wayId,
+        });
+        return;
+      }
+      setNetworkPopup(null);
+
       const topLayerId = features?.[0]?.layer?.id;
       const isOverRoute =
         topLayerId === 'routes-line' || topLayerId === 'routes-hit-target';
@@ -805,14 +843,11 @@ export const MapComponent = () => {
       if (isOverRoute) {
         onRouteLineHover(event);
       } else if (isOverTiles) {
-        const map = mapRef.current.getMap();
         map.getCanvas().style.cursor = 'pointer';
       } else {
-        // Clear popup and cursor when not over route
         if (routeHoverPopup) {
           setRouteHoverPopup(null);
         }
-        const map = mapRef.current.getMap();
         if (map.getCanvas().style.cursor === 'pointer') {
           map.getCanvas().style.cursor = '';
         }
@@ -826,6 +861,7 @@ export const MapComponent = () => {
     const map = mapRef.current.getMap();
     map.getCanvas().style.cursor = '';
     setRouteHoverPopup(null);
+    setNetworkPopup(null);
   }, []);
 
   const handleGeolocateError = useCallback((error: GeolocateErrorEvent) => {
@@ -861,8 +897,15 @@ export const MapComponent = () => {
                 VALHALLA_SHORTCUTS_LAYER_ID,
                 VALHALLA_ACCESS_RESTRICTIONS_PERMANENT_LAYER_ID,
                 VALHALLA_ACCESS_RESTRICTIONS_TIMED_LAYER_ID,
+                NETWORK_ACCESS_LAYER_ID,
+                NETWORK_ACCESS_HIT_TARGET_LAYER_ID,
               ]
-            : ['routes-line', 'routes-hit-target']
+            : [
+                'routes-line',
+                'routes-hit-target',
+                NETWORK_ACCESS_LAYER_ID,
+                NETWORK_ACCESS_HIT_TARGET_LAYER_ID,
+              ]
         }
         mapStyle={resolvedMapStyle}
         style={{ width: '100%', height: '100vh' }}
@@ -875,6 +918,7 @@ export const MapComponent = () => {
         <NavigationControl />
         <GeolocateControl onError={handleGeolocateError} />
         <DrawControl onUpdate={updateExcludePolygons} controlRef={drawRef} />
+        <NetworkAccessLayer></NetworkAccessLayer>
         <MapStyleControl
           customStyleData={customStyleData}
           onStyleChange={handleStyleChange}
@@ -957,7 +1001,14 @@ export const MapComponent = () => {
             summary={routeHoverPopup.summary}
           />
         )}
-
+        {networkPopup && (
+          <NetworkAccessPopup
+            lng={networkPopup.lng}
+            lat={networkPopup.lat}
+            wayId={networkPopup.wayId}
+            onClose={() => setNetworkPopup(null)}
+          />
+        )}
         {tilesPopup && (
           <Popup
             longitude={tilesPopup.lng}
