@@ -1,6 +1,7 @@
 import { useMemo } from 'react';
 import { Source, Layer } from 'react-map-gl/maplibre';
 import { useDirectionsStore } from '@/stores/directions-store';
+import { useNavigationStore } from '@/stores/navigation-store';
 import { routeObjects } from '../constants';
 import type { Feature, FeatureCollection, LineString } from 'geojson';
 import type { ParsedDirectionsGeometry } from '@/components/types';
@@ -8,9 +9,8 @@ import type { ParsedDirectionsGeometry } from '@/components/types';
 export function RouteLines() {
   const directionResults = useDirectionsStore((state) => state.results);
   const directionsSuccessful = useDirectionsStore((state) => state.successful);
-  const activeRouteIndex = useDirectionsStore(
-    (state) => state.activeRouteIndex
-  );
+  const activeRouteIndex = useDirectionsStore((state) => state.activeRouteIndex);
+  const isNavigating = useNavigationStore((s) => s.isNavigating);
 
   const data = useMemo(() => {
     if (!directionResults.data || !directionsSuccessful) return null;
@@ -79,7 +79,7 @@ export function RouteLines() {
     } as FeatureCollection;
   }, [directionResults, directionsSuccessful, activeRouteIndex]);
 
-  if (!data) return null;
+  if (!data || isNavigating) return null;
 
   return (
     <Source id="routes" type="geojson" data={data}>

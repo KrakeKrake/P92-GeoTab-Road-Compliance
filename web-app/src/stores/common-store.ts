@@ -22,6 +22,12 @@ export const profileEnum = z.enum([
 
 export type Profile = z.infer<typeof profileEnum>;
 
+export interface SearchResult {
+  lng: number;
+  lat: number;
+  name: string;
+}
+
 interface CommonState {
   settingsPanelOpen: boolean;
   directionsPanelOpen: boolean;
@@ -30,11 +36,13 @@ interface CommonState {
   settings: PossibleSettings;
   dateTime: { type: number; value: string };
   mapReady: boolean;
+  searchResult: SearchResult | null;
 }
 
 interface CommonActions {
   showLoading: (loading: boolean) => void;
   zoomTo: (coordinates: number[][]) => void;
+  setSearchResult: (result: SearchResult | null) => void;
   toggleSettings: () => void;
   toggleDirections: () => void;
   updateSettings: (
@@ -65,9 +73,11 @@ export const useCommonStore = create<CommonStore>()(
         value: new Date().toISOString().slice(0, 16),
       },
       mapReady: false,
+      searchResult: null,
 
       showLoading: (loading) => set({ loading }),
       zoomTo: (coordinates) => set({ coordinates }),
+      setSearchResult: (result) => set({ searchResult: result }),
       setMapReady: (ready) => set({ mapReady: ready }),
       toggleSettings: () =>
         set(
