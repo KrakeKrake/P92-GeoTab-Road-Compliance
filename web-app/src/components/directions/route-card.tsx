@@ -16,11 +16,12 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import { Download } from 'lucide-react';
+import { Download, Navigation } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Separator } from '@/components/ui/separator';
 import { exportDataAsJson } from '@/utils/export';
 import { getDateTimeString } from '@/utils/date-time';
+import { useRouteSimulation } from '@/hooks/use-route-simulation';
 
 interface RouteCardProps {
   data: ParsedDirectionsGeometry;
@@ -36,6 +37,7 @@ export const RouteCard = ({
   onSelect,
 }: RouteCardProps) => {
   const [showManeuvers, setShowManeuvers] = useState(false);
+  const { simulate } = useRouteSimulation();
 
   const exportToGeoJson = useCallback(() => {
     const coordinates = data?.decodedGeometry;
@@ -90,11 +92,23 @@ export const RouteCard = ({
         />
         <Collapsible open={showManeuvers} onOpenChange={setShowManeuvers}>
           <div className="flex justify-between">
-            <CollapsibleTrigger asChild>
-              <Button variant="outline" size="sm">
-                {showManeuvers ? 'Hide Maneuvers' : 'Show Maneuvers'}
+            <div className="flex gap-2">
+              <CollapsibleTrigger asChild>
+                <Button variant="outline" size="sm">
+                  {showManeuvers ? 'Hide Maneuvers' : 'Show Maneuvers'}
+                </Button>
+              </CollapsibleTrigger>
+              <Button
+                size="sm"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  simulate(data.trip, data.decodedGeometry ?? []);
+                }}
+              >
+                <Navigation size={14} />
+                Start Route
               </Button>
-            </CollapsibleTrigger>
+            </div>
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button variant="outline" size="sm">

@@ -3,6 +3,8 @@ import { MapComponent } from './components/map';
 import { RoutePlanner } from './components/route-planner';
 import { SettingsPanel } from './components/settings-panel/settings-panel';
 import { CompliancePanel } from './components/compliance-panel';
+import { NavigationPanel } from './components/navigation/navigation-panel';
+import { PlaceSearch } from './components/map/parts/place-search';
 import { Toaster } from '@/components/ui/sonner';
 
 export const App = () => {
@@ -13,6 +15,8 @@ export const App = () => {
         {/* Existing Valhalla area */}
         <div className="relative min-w-0 flex-1">
           <MapComponent />
+          <PlaceSearch />
+          <NavigationPanel />
           <RoutePlanner />
           <SettingsPanel />
         </div>
