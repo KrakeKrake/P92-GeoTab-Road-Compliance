@@ -22,6 +22,7 @@ import { ProfilePicker } from './profile-picker';
 import type { Profile } from '@/stores/common-store';
 import { useDirectionsQuery } from '@/hooks/use-directions-queries';
 import { useIsochronesQuery } from '@/hooks/use-isochrones-queries';
+import { useNavigationStore } from '@/stores/navigation-store';
 
 const TAB_CONFIG = {
   directions: {
@@ -44,6 +45,7 @@ export const RoutePlanner = () => {
   const directionsPanelOpen = useCommonStore(
     (state) => state.directionsPanelOpen
   );
+  const isNavigating = useNavigationStore((s) => s.isNavigating);
   const { refetch: refetchDirections } = useDirectionsQuery();
   const { refetch: refetchIsochrones } = useIsochronesQuery();
   const loading = useCommonStore((state) => state.loading);
@@ -75,7 +77,7 @@ export const RoutePlanner = () => {
   };
 
   return (
-    <Sheet open={directionsPanelOpen} modal={false}>
+    <Sheet open={directionsPanelOpen && !isNavigating} modal={false}>
       <Tabs
         value={activeTab}
         className="w-[400px]"
