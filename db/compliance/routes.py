@@ -176,7 +176,8 @@ def login():
 
     finally:
         db.close()
-        
+
+
 @compliance_bp.route("/auth/users/<int:user_id>/profile", methods=["PUT"])
 def update_user_profile(user_id):
     data = request.get_json() or {}
