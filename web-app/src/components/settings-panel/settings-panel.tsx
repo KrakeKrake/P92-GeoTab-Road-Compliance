@@ -94,7 +94,7 @@ export const SettingsPanel = () => {
   }, [activeTab, profile, resetSettings, refetchDirections, refetchIsochrones]);
 
   const hasProfileSettings =
-    profileSettings[profile as ProfileWithSettings].boolean.length > 0;
+    (profileSettings[profile as ProfileWithSettings]?.boolean.length ?? 0) > 0;
 
   return (
     <Sheet open={settingsPanelOpen} modal={false}>
@@ -226,7 +226,7 @@ export const SettingsPanel = () => {
             onOpenChange={setGeneralSettingsOpen}
           >
             <div className="space-y-1.25">
-              {generalSettings[profile as ProfileWithSettings].numeric
+              {(generalSettings[profile as ProfileWithSettings]?.numeric ?? [])
                 .filter((option) => !QUICK_SETTING_PARAM_SET.has(option.param))
                 .map((option, key) => (
                   <SliderSetting
@@ -257,7 +257,7 @@ export const SettingsPanel = () => {
                     }}
                   />
                 ))}
-              {generalSettings[profile as ProfileWithSettings].boolean.map(
+              {(generalSettings[profile as ProfileWithSettings]?.boolean ?? []).map(
                 (option, key) => (
                   <CheckboxSetting
                     key={key}

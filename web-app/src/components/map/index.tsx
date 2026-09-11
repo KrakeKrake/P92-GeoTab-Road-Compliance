@@ -56,6 +56,9 @@ import { MapInfoPopup } from './parts/map-info-popup';
 import { MapContextMenu } from './parts/map-context-menu';
 import { RouteHoverPopup } from './parts/route-hover-popup';
 import { TilesInfoPopup } from './parts/tiles-info-popup';
+import { UserPositionMarker } from './parts/user-position-marker';
+import { NavigationRouteLine } from './parts/navigation-route-line';
+import { SearchResultMarker } from './parts/search-result-marker';
 import {
   VALHALLA_EDGES_LAYER_ID,
   VALHALLA_NODES_LAYER_ID,
@@ -69,6 +72,7 @@ import { getInitialMapPosition, LAST_CENTER_KEY } from './utils';
 import { useCommonStore } from '@/stores/common-store';
 import { useDirectionsStore } from '@/stores/directions-store';
 import { useIsochronesStore } from '@/stores/isochrones-store';
+import { useNavigationStore } from '@/stores/navigation-store';
 import {
   useDirectionsQuery,
   useSetWaypointFromCoords,
@@ -129,6 +133,10 @@ export const MapComponent = () => {
   const setActiveRouteIndex = useDirectionsStore(
     (state) => state.setActiveRouteIndex
   );
+
+  const isNavigating = useNavigationStore((state) => state.isNavigating);
+  const currentPosition = useNavigationStore((state) => state.currentPosition);
+  const navHeading = useNavigationStore((state) => state.heading);
 
   const { refetch: refetchDirections } = useDirectionsQuery();
   const { refetch: refetchIsochrones } = useIsochronesQuery();
@@ -523,6 +531,25 @@ export const MapComponent = () => {
     //panel change no longer rerun this
   }, [coordinates]);
 
+  // Follow position during navigation with Google Maps-style tilt + bearing
+  useEffect(() => {
+    if (!mapRef.current) return;
+    if (!isNavigating) {
+      mapRef.current.easeTo({ pitch: 0, bearing: 0, duration: 600 });
+      return;
+    }
+    if (!currentPosition) return;
+    mapRef.current.easeTo({
+      center: [currentPosition[1], currentPosition[0]],
+      zoom: 17,
+      bearing: navHeading,
+      pitch: 60,
+      duration: 150,
+      // Offset anchor into lower third — large top padding + high pitch causes horizon overload
+      padding: { top: Math.round(window.innerHeight * 0.40), bottom: 0, left: 0, right: 0 },
+    });
+  }, [isNavigating, currentPosition, navHeading]);
+
   const handleMapTilesClick = useCallback(
     (event: maplibregl.MapLayerMouseEvent) => {
       if (!mapRef.current) return;
@@ -899,6 +926,9 @@ export const MapComponent = () => {
         />
         <RouteLines />
         <HighlightSegment />
+        <NavigationRouteLine />
+        <SearchResultMarker />
+        <UserPositionMarker />
         <IsochronePolygons />
         <IsochroneLocations />
         {markers.map((marker) => (
