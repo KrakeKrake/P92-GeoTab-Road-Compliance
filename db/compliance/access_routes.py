@@ -1,4 +1,5 @@
 import os
+from unittest import result
 
 from dotenv import load_dotenv
 from flask import Blueprint, request, jsonify
@@ -61,6 +62,24 @@ def request_network_access():
         rows = result.fetchall()
 
     return jsonify(format_response(rows))
+
+@access_blueprint.route("/query_id", methods=["GET"])
+def request_network_access_id():
+    ids = request.args.getlist("ids")
+    if not ids:
+        return jsonify({"error": "at least one 'ids' param required"}), 400
+    with engine.connect() as conn:
+        stmt = text("""
+            SELECT network_name, access_code, access_desc, manager
+            FROM nhvr_access.nhvr_network_access
+            WHERE osm_way_id IN :ids
+        """).bindparams(bindparam("ids", expanding=True))
+        result = conn.execute(stmt, {"ids": ids})
+        rows = result.fetchall()
+        return jsonify(format_response(rows))
+
+
+
 
 if __name__ == "__main__":
     request_network_access(['CONTROLLED_ACCESS_BUS', 'VIC - HPLV 36.5m Tri-Dolly A-Double'])
