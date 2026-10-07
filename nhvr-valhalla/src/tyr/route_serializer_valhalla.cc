@@ -6,6 +6,7 @@
 #include "proto_conversions.h"
 #include "tyr/serializers.h"
 
+#include <set>
 #include <vector>
 
 using namespace valhalla;
@@ -566,24 +567,34 @@ void legs(valhalla::Api& api, int route_index, rapidjson::writer_wrapper_t& writ
       // Edge 123 is approved, but 124 is conditional.
       // The aggregated status for this maneuver will be "conditional".
       std::map<std::string, std::string> nhvr_aggregated;
+      std::map<std::string, std::set<uint64_t>> nhvr_way_ids;
       for (uint32_t i = maneuver.begin_path_index(); i < maneuver.end_path_index(); ++i) {
-        for (const auto& network : trip_leg_itr->node(i).edge().nhvr_networks()) {
+        const auto& trip_edge = trip_leg_itr->node(i).edge();
+        const uint64_t way_id = trip_edge.way_id();
+        for (const auto& network : trip_edge.nhvr_networks()) {
           auto it = nhvr_aggregated.find(network.name());
           if (it == nhvr_aggregated.end() ||
               (it->second == "approved" && network.status() != "approved") ||
               (it->second == "conditional" && network.status() == "prohibited")) {
             nhvr_aggregated[network.name()] = network.status();
           }
+          nhvr_way_ids[network.name()].insert(way_id);
         }
       }
-      // If there are NHVR networks, add them to the output
-      // Simply as a list of name/status pairs
+      // If there are NHVR networks, add them to the output as name/status
+      // pairs plus the OSM way ids that carry them, so the caller can look up
+      // condition descriptions in a separate API.
       if (!nhvr_aggregated.empty()) {
         writer.start_array("nhvr_networks");
         for (const auto& [name, status] : nhvr_aggregated) {
           writer.start_object();
           writer("name", name);
           writer("status", status);
+          writer.start_array("way_ids");
+          for (const auto way_id : nhvr_way_ids[name]) {
+            writer(static_cast<uint64_t>(way_id));
+          }
+          writer.end_array();
           writer.end_object();
         }
         writer.end_array();

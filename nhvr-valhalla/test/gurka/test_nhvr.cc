@@ -231,3 +231,42 @@ TEST(NhvrSerialization, ManeuverAggregationApprovedAndConditional) {
   }
   EXPECT_TRUE(found);
 }
+
+TEST(NhvrSerialization, ManeuverAggregationIncludesWayIds) {
+  const std::string ascii_map = R"(A---B---C)";
+  const gurka::ways ways = {
+      {"AB", {{"highway", "residential"}, {"nhvr_networks", "NetA:0"}, {"osm_id", "100"}}},
+      {"BC", {{"highway", "residential"}, {"nhvr_networks", "NetA:2"}, {"osm_id", "200"}}},
+  };
+  const auto layout = gurka::detail::map_to_coordinates(ascii_map, grid_size);
+  auto map = gurka::buildtiles(layout, ways, {}, {}, "test/data/nhvr_way_ids");
+
+  auto res = gurka::do_action(Options::route, map, {"A", "C"}, "truck",
+                              {{"/filters/action", "include"},
+                               {"/filters/attributes/0", "edge.nhvr_networks"}});
+
+  // find the maneuver spanning both edges (start of a straight route)
+  const auto& leg = res.directions().routes(0).legs(0);
+  int spanning_idx = -1;
+  for (int i = 0; i < leg.maneuver_size(); ++i) {
+    if (leg.maneuver(i).end_path_index() - leg.maneuver(i).begin_path_index() >= 2) {
+      spanning_idx = i;
+    }
+  }
+  ASSERT_NE(spanning_idx, -1) << "expected a maneuver spanning both edges";
+
+  auto d = gurka::convert_to_json(res, valhalla::Options_Format_json);
+  const auto& m = d["trip"]["legs"][0]["maneuvers"][spanning_idx];
+  ASSERT_TRUE(m.HasMember("nhvr_networks"));
+
+  for (const auto& n : m["nhvr_networks"].GetArray()) {
+    if (std::string(n["name"].GetString()) == "NetA") {
+      EXPECT_EQ(std::string(n["status"].GetString()), "prohibited");
+      ASSERT_TRUE(n.HasMember("way_ids"));
+      const auto& way_ids = n["way_ids"].GetArray();
+      ASSERT_EQ(way_ids.Size(), 2);
+      EXPECT_EQ(way_ids[0].GetUint64(), 100);
+      EXPECT_EQ(way_ids[1].GetUint64(), 200);
+    }
+  }
+}

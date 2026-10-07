@@ -10,3 +10,4 @@ node_modules/
 dist/
 .env
 **/.idea
+nhvr-valhalla/test/data/
