@@ -1,6 +1,4 @@
 import os
-from unittest import result
-
 from dotenv import load_dotenv
 from flask import Blueprint, request, jsonify
 from sqlalchemy import create_engine, text
@@ -70,7 +68,7 @@ def request_network_access_id():
         return jsonify({"error": "at least one 'ids' param required"}), 400
     with engine.connect() as conn:
         stmt = text("""
-            SELECT network_name, access_code, access_desc, manager
+            SELECT osm_way_id, network_name, access_code, access_desc, manager
             FROM nhvr_access.nhvr_network_access
             WHERE osm_way_id IN :ids
         """).bindparams(bindparam("ids", expanding=True))
