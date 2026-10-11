@@ -243,7 +243,8 @@ TEST(NhvrSerialization, ManeuverAggregationIncludesWayIds) {
 
   auto res = gurka::do_action(Options::route, map, {"A", "C"}, "truck",
                               {{"/filters/action", "include"},
-                               {"/filters/attributes/0", "edge.nhvr_networks"}});
+                               {"/filters/attributes/0", "edge.nhvr_networks"},
+                               {"/filters/attributes/1", "edge.way_id"}});
 
   // find the maneuver spanning both edges (start of a straight route)
   const auto& leg = res.directions().routes(0).legs(0);
