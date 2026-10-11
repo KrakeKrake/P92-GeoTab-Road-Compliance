@@ -128,8 +128,15 @@ export interface Leg {
   shape: string;
 }
 
+export interface NHVRNetwork {
+  name: string;
+  status: 'approved' | 'conditional' | 'prohibited';
+  way_ids?: number[];
+}
+
 export interface Maneuver {
   type: number;
+  nhvr_networks?: NHVRNetwork[];
   instruction: string;
   verbal_succinct_transition_instruction?: string;
   verbal_pre_transition_instruction: string;

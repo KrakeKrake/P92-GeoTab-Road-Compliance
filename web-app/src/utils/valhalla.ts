@@ -83,7 +83,7 @@ export const buildDirectionsRequest = ({
   const nhvrNetworks = settings.costing.nhvr_networks;
   if (nhvrNetworks && nhvrNetworks.length > 0) {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    (req.json as any).filters = { attributes: ['edge.nhvr_networks'], action: 'include' };
+    (req.json as any).filters = { attributes: ['edge.nhvr_networks', 'edge.way_id'], action: 'include' };
   }
   return req;
 };

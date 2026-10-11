@@ -7,6 +7,7 @@ import { RouteAttributes } from '@/components/ui/route-attributes';
 import { formatDuration } from '@/utils/date-time';
 import { useDirectionsStore } from '@/stores/directions-store';
 import { getManeuverIcon } from '@/utils/get-maneuver-icon';
+import { ManeuverNhvrNetworks } from './maneuver-nhvr-networks';
 
 const getLength = (length: number) => {
   const visibleLength = length * 1000;
@@ -88,6 +89,9 @@ export const Maneuvers = ({ legs, index }: ManeuversProps) => {
                         variant="outline"
                       />
                     </div>
+                  )}
+                  {mnv.nhvr_networks && mnv.nhvr_networks.length > 0 && (
+                    <ManeuverNhvrNetworks networks={mnv.nhvr_networks} />
                   )}
                 </div>
               </div>
