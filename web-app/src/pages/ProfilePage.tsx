@@ -212,9 +212,15 @@ const ProfilePage = () => {
         new Event('auth-updated')
       );
 
-      setMessage(
-        'Profile updated successfully.'
-      );
+      // Return to truck routing after successful save
+      navigate({
+        to: '/$activeTab',
+        params: { activeTab: 'directions' },
+        search: {
+          profile: 'truck',
+          lang: 'en-GB',
+        },
+      });
     } catch (error) {
       console.error(
         'Failed to update profile:',
@@ -262,7 +268,14 @@ const ProfilePage = () => {
             <button
               type="button"
               onClick={() =>
-                navigate({ to: '/' })
+                navigate({
+                  to: '/$activeTab',
+                  params: { activeTab: 'directions' },
+                  search: {
+                    profile: 'truck',
+                    lang: 'en-GB',
+                  },
+                })
               }
               className="h-10 flex-1 rounded-md border border-border bg-background px-4 text-sm font-medium hover:bg-accent"
             >
@@ -281,7 +294,16 @@ const ProfilePage = () => {
         {/* Close */}
         <button
           type="button"
-          onClick={() => navigate({ to: '/' })}
+          onClick={() =>
+            navigate({
+              to: '/$activeTab',
+              params: { activeTab: 'directions' },
+              search: {
+                profile: 'truck',
+                lang: 'en-GB',
+              },
+            })
+          }
           className="absolute right-4 top-4 flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground"
           title="Back to map"
         >

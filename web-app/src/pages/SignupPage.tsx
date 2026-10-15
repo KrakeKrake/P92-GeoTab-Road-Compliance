@@ -50,9 +50,19 @@ const SignupPage = () => {
     <main className="flex min-h-screen items-center justify-center bg-background p-4">
       <section className="relative w-full max-w-sm rounded-lg border border-border bg-card p-6 shadow-sm">
 
+        {/* Close button */}
         <button
           type="button"
-          onClick={() => navigate({ to: '/' })}
+          onClick={() =>
+            navigate({
+              to: '/$activeTab',
+              params: { activeTab: 'directions' },
+              search: {
+                profile: 'truck',
+                lang: 'en-GB',
+              },
+            })
+          }
           className="absolute right-4 top-4 flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground"
           title="Back to map"
         >

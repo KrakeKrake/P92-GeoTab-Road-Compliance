@@ -18,7 +18,7 @@ import AddVehiclePage from './pages/AddVehiclePage';
 import EditVehiclePage from './pages/EditVehiclePage';
 
 const defaultProfile = ((import.meta.env
-  .VITE_DEFAULT_COSTING_MODEL as string) || 'bicycle') as Profile;
+  .VITE_DEFAULT_COSTING_MODEL as string) || 'truck') as Profile;
 
 export const rootRoute = createRootRoute({ component: RootComponent });
 

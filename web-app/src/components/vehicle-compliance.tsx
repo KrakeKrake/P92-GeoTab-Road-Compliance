@@ -133,7 +133,7 @@ interface GoodsRoutingResponse {
   network_rule_note: string | null;
 
   additional_restrictions:
-    GoodsRoutingRestrictionResponse[];
+  GoodsRoutingRestrictionResponse[];
 
   reason: string;
 }
@@ -379,7 +379,7 @@ export const VehicleCompliance = () => {
         if (!response.ok) {
           throw new Error(
             data.detail ||
-              'Failed to load vehicle profiles.'
+            'Failed to load vehicle profiles.'
           );
         }
 
@@ -479,7 +479,7 @@ export const VehicleCompliance = () => {
         if (!response.ok) {
           throw new Error(
             data.detail ||
-              'Failed to load vehicle information.'
+            'Failed to load vehicle information.'
           );
         }
 
@@ -651,14 +651,27 @@ export const VehicleCompliance = () => {
   /*
    * Applicable mass schemes.
    */
-  const applicableMassLimits =
-    currentAxleConfig
-      ?.mass_limits
-      .filter(
-        (limit) =>
-          limit.applicable &&
-          limit.mass_limit_t !== null
-      ) ?? [];
+  // Always display mass schemes in GML, CML, HML order
+  const MASS_SCHEME_ORDER: Record<string, number> = {
+    GML: 0,
+    CML: 1,
+    HML: 2,
+  };
+
+  const sortedMassLimits = [
+    ...(currentAxleConfig?.mass_limits ?? []),
+  ].sort(
+    (a, b) =>
+      (MASS_SCHEME_ORDER[a.mass_scheme_id] ?? 99) -
+      (MASS_SCHEME_ORDER[b.mass_scheme_id] ?? 99)
+  );
+
+  // Only show applicable schemes in the dropdown
+  const applicableMassLimits = sortedMassLimits.filter(
+    (limit) =>
+      limit.applicable &&
+      limit.mass_limit_t !== null
+  );
 
 
   const dimensionRanges =
@@ -696,7 +709,7 @@ export const VehicleCompliance = () => {
       (question) => {
         const value =
           extraAnswers[
-            question.name
+          question.name
           ];
 
         if (
@@ -815,27 +828,27 @@ export const VehicleCompliance = () => {
       if (dimensionRanges) {
         if (
           width <
-            dimensionRanges.min_width_m ||
+          dimensionRanges.min_width_m ||
           width >
-            dimensionRanges.max_width_m
+          dimensionRanges.max_width_m
         ) {
           return `Width must be between ${dimensionRanges.min_width_m} m and ${dimensionRanges.max_width_m} m.`;
         }
 
         if (
           height <
-            dimensionRanges.min_height_m ||
+          dimensionRanges.min_height_m ||
           height >
-            dimensionRanges.max_height_m
+          dimensionRanges.max_height_m
         ) {
           return `Height must be between ${dimensionRanges.min_height_m} m and ${dimensionRanges.max_height_m} m.`;
         }
 
         if (
           length <
-            dimensionRanges.min_length_m ||
+          dimensionRanges.min_length_m ||
           length >
-            dimensionRanges.max_length_m
+          dimensionRanges.max_length_m
         ) {
           return `Length must be between ${dimensionRanges.min_length_m} m and ${dimensionRanges.max_length_m} m.`;
         }
@@ -853,7 +866,7 @@ export const VehicleCompliance = () => {
     ) {
       const answer =
         extraAnswers[
-          question.name
+        question.name
         ];
 
       if (
@@ -865,7 +878,7 @@ export const VehicleCompliance = () => {
 
       if (
         question.type !==
-          'bool' &&
+        'bool' &&
         !Number.isFinite(
           Number(answer)
         )
@@ -940,8 +953,8 @@ export const VehicleCompliance = () => {
     if (!response.ok) {
       throw new Error(
         data.detail ||
-          data.reason ||
-          'Failed to resolve goods routing.'
+        data.reason ||
+        'Failed to resolve goods routing.'
       );
     }
 
@@ -1038,7 +1051,7 @@ export const VehicleCompliance = () => {
       if (!response.ok) {
         throw new Error(
           data.detail ||
-            'Failed to classify and validate vehicle.'
+          'Failed to classify and validate vehicle.'
         );
       }
 
@@ -1069,9 +1082,9 @@ export const VehicleCompliance = () => {
 
       const classificationValid =
         vehicleClass !==
-          'invalid_input' &&
+        'invalid_input' &&
         vehicleClass !==
-          'unknown';
+        'unknown';
 
 
       if (
@@ -1086,22 +1099,22 @@ export const VehicleCompliance = () => {
           useCustomDimensions
             ? Number(customWidth)
             : vehicleFormData
-                .profile
-                .default_width_m;
+              .profile
+              .default_width_m;
 
         const heightM =
           useCustomDimensions
             ? Number(customHeight)
             : vehicleFormData
-                .profile
-                .default_height_m;
+              .profile
+              .default_height_m;
 
         const lengthM =
           useCustomDimensions
             ? Number(customLength)
             : vehicleFormData
-                .profile
-                .default_length_m;
+              .profile
+              .default_length_m;
 
 
         /*
@@ -1377,11 +1390,11 @@ export const VehicleCompliance = () => {
   ) {
     return (
       classification !==
-        'class_3' &&
+      'class_3' &&
       classification !==
-        'invalid_input' &&
+      'invalid_input' &&
       classification !==
-        'unknown'
+      'unknown'
     );
   }
 
@@ -1447,7 +1460,7 @@ export const VehicleCompliance = () => {
 
           {user?.licence_class_id &&
             licenceClass ===
-              user.licence_class_id && (
+            user.licence_class_id && (
               <p className="text-xs text-muted-foreground">
                 Using your saved licence class
               </p>
@@ -1504,7 +1517,7 @@ export const VehicleCompliance = () => {
 
             {user?.favourite_profile_id &&
               selectedProfileId ===
-                user.favourite_profile_id && (
+              user.favourite_profile_id && (
                 <p className="text-xs text-muted-foreground">
                   Using your favourite vehicle profile
                 </p>
@@ -1602,8 +1615,7 @@ export const VehicleCompliance = () => {
                 </thead>
 
                 <tbody>
-                  {currentAxleConfig
-                    .mass_limits
+                  {sortedMassLimits
                     .map(
                       (limit) => (
                         <tr
@@ -1620,7 +1632,7 @@ export const VehicleCompliance = () => {
 
                           <td className="px-3 py-2 text-muted-foreground">
                             {limit.mass_limit_t !==
-                            null
+                              null
                               ? `${limit.mass_limit_t} t`
                               : '—'}
                           </td>
@@ -1827,7 +1839,7 @@ export const VehicleCompliance = () => {
               onChange={(event) => {
                 setUseCustomDimensions(
                   event.target.value ===
-                    'yes'
+                  'yes'
                 );
 
                 setResult(null);
@@ -2062,115 +2074,115 @@ export const VehicleCompliance = () => {
         {/* Additional Questions */}
         {templateQuestions.length >
           0 && (
-          <div className="flex flex-col gap-4">
+            <div className="flex flex-col gap-4">
 
-            <div>
-              <h4 className="text-sm font-medium text-foreground">
-                Additional Questions
-              </h4>
+              <div>
+                <h4 className="text-sm font-medium text-foreground">
+                  Additional Questions
+                </h4>
 
-              <p className="mt-1 text-xs text-muted-foreground">
-                Additional information required for this
-                vehicle type.
-              </p>
-            </div>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  Additional information required for this
+                  vehicle type.
+                </p>
+              </div>
 
 
-            {templateQuestions.map(
-              (question) => {
-                const answer =
-                  extraAnswers[
+              {templateQuestions.map(
+                (question) => {
+                  const answer =
+                    extraAnswers[
                     question.name
-                  ];
+                    ];
 
-                return (
-                  <div
-                    key={
-                      question.name
-                    }
-                    className="flex flex-col gap-2"
-                  >
-                    <label
-                      htmlFor={`question-${question.name}`}
-                      className="text-sm font-medium"
-                    >
-                      {
-                        question.label
+                  return (
+                    <div
+                      key={
+                        question.name
                       }
-                    </label>
-
-
-                    {question.type ===
-                    'bool' ? (
-                      <select
-                        id={`question-${question.name}`}
-                        value={
-                          answer === true
-                            ? 'true'
-                            : answer ===
-                                false
-                              ? 'false'
-                              : ''
-                        }
-                        onChange={(event) => {
-                          handleExtraAnswer(
-                            question,
-                            event.target
-                              .value
-                          );
-
-                          setResult(null);
-                          setError('');
-
-                          clearAppliedVehicle();
-                        }}
-                        className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm outline-none focus:ring-2 focus:ring-ring"
+                      className="flex flex-col gap-2"
+                    >
+                      <label
+                        htmlFor={`question-${question.name}`}
+                        className="text-sm font-medium"
                       >
-                        <option value="">
-                          — Select —
-                        </option>
-
-                        <option value="true">
-                          Yes
-                        </option>
-
-                        <option value="false">
-                          No
-                        </option>
-                      </select>
-                    ) : (
-                      <input
-                        id={`question-${question.name}`}
-                        type="number"
-                        step="0.1"
-                        value={
-                          typeof answer ===
-                          'string'
-                            ? answer
-                            : ''
+                        {
+                          question.label
                         }
-                        onChange={(event) => {
-                          handleExtraAnswer(
-                            question,
-                            event.target
-                              .value
-                          );
+                      </label>
 
-                          setResult(null);
-                          setError('');
 
-                          clearAppliedVehicle();
-                        }}
-                        className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm outline-none focus:ring-2 focus:ring-ring"
-                      />
-                    )}
-                  </div>
-                );
-              }
-            )}
+                      {question.type ===
+                        'bool' ? (
+                        <select
+                          id={`question-${question.name}`}
+                          value={
+                            answer === true
+                              ? 'true'
+                              : answer ===
+                                false
+                                ? 'false'
+                                : ''
+                          }
+                          onChange={(event) => {
+                            handleExtraAnswer(
+                              question,
+                              event.target
+                                .value
+                            );
 
-          </div>
-        )}
+                            setResult(null);
+                            setError('');
+
+                            clearAppliedVehicle();
+                          }}
+                          className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm outline-none focus:ring-2 focus:ring-ring"
+                        >
+                          <option value="">
+                            — Select —
+                          </option>
+
+                          <option value="true">
+                            Yes
+                          </option>
+
+                          <option value="false">
+                            No
+                          </option>
+                        </select>
+                      ) : (
+                        <input
+                          id={`question-${question.name}`}
+                          type="number"
+                          step="0.1"
+                          value={
+                            typeof answer ===
+                              'string'
+                              ? answer
+                              : ''
+                          }
+                          onChange={(event) => {
+                            handleExtraAnswer(
+                              question,
+                              event.target
+                                .value
+                            );
+
+                            setResult(null);
+                            setError('');
+
+                            clearAppliedVehicle();
+                          }}
+                          className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm outline-none focus:ring-2 focus:ring-ring"
+                        />
+                      )}
+                    </div>
+                  );
+                }
+              )}
+
+            </div>
+          )}
 
 
         {/* Goods */}
@@ -2328,9 +2340,9 @@ export const VehicleCompliance = () => {
                 )
                   ? 'rounded-md border border-green-500/30 bg-green-500/10 p-4'
                   : result
-                        .classification_result
-                        .classification ===
-                      'class_3'
+                    .classification_result
+                    .classification ===
+                    'class_3'
                     ? 'rounded-md border border-amber-500/30 bg-amber-500/10 p-4'
                     : 'rounded-md border border-destructive/30 bg-destructive/10 p-4'
               }
@@ -2346,9 +2358,9 @@ export const VehicleCompliance = () => {
                     )
                       ? 'flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-green-600 text-sm font-bold text-white'
                       : result
-                            .classification_result
-                            .classification ===
-                          'class_3'
+                        .classification_result
+                        .classification ===
+                        'class_3'
                         ? 'flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-amber-500 text-sm font-bold text-white'
                         : 'flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-destructive text-sm font-bold text-white'
                   }
@@ -2391,36 +2403,36 @@ export const VehicleCompliance = () => {
               .classification_result
               .warnings.length >
               0 && (
-              <div className="rounded-md border border-amber-500/30 bg-amber-500/10 p-3">
+                <div className="rounded-md border border-amber-500/30 bg-amber-500/10 p-3">
 
-                <p className="text-sm font-medium">
-                  Warnings
-                </p>
+                  <p className="text-sm font-medium">
+                    Warnings
+                  </p>
 
-                <ul className="mt-2 list-disc space-y-1 pl-4 text-xs text-muted-foreground">
-                  {result
-                    .classification_result
-                    .warnings
-                    .map(
-                      (
-                        warning,
-                        index
-                      ) => (
-                        <li
-                          key={
-                            index
-                          }
-                        >
-                          {
-                            warning
-                          }
-                        </li>
-                      )
-                    )}
-                </ul>
+                  <ul className="mt-2 list-disc space-y-1 pl-4 text-xs text-muted-foreground">
+                    {result
+                      .classification_result
+                      .warnings
+                      .map(
+                        (
+                          warning,
+                          index
+                        ) => (
+                          <li
+                            key={
+                              index
+                            }
+                          >
+                            {
+                              warning
+                            }
+                          </li>
+                        )
+                      )}
+                  </ul>
 
-              </div>
-            )}
+                </div>
+              )}
 
           </div>
         )}
