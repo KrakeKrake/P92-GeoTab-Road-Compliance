@@ -72,42 +72,45 @@ export const DirectionsControl = () => {
   const appliedVehicle = useComplianceStore(
     (state) => state.appliedVehicle
   );
+  const lastAppliedNetwork = useRef<string | null>(null);
 useEffect(() => {
-    if (profile !== 'truck') return;
+  if (profile !== 'truck') return;
 
-    const overrideKey = routingPreset?.networkOverrideKey;
+  const overrideKey = routingPreset?.networkOverrideKey;
 
-    // 1. Goods-specific network takes priority.
-    const overrideNetwork = overrideKey
-      ? COMPLIANCE_TO_NHVR_NETWORK[overrideKey]
-      : undefined;
+  // Goods-specific network takes priority
+  const overrideNetwork = overrideKey
+    ? COMPLIANCE_TO_NHVR_NETWORK[overrideKey]
+    : undefined;
 
-    // 2. Otherwise use the vehicle's normal/base network.
-    const baseNetwork = appliedVehicle?.templateId
-      ? VEHICLE_TO_NHVR_NETWORK[appliedVehicle.templateId]
-      : undefined;
+  // Otherwise use the vehicle's normal network
+  const baseNetwork = appliedVehicle?.templateId
+    ? VEHICLE_TO_NHVR_NETWORK[appliedVehicle.templateId]
+    : undefined;
 
-    const networkName = overrideNetwork ?? baseNetwork;
+  const networkName = overrideNetwork ?? baseNetwork;
 
-    // No network rule for this vehicle yet.
-    if (!networkName) return;
+  if (!networkName) return;
 
-    const alreadyApplied =
-      settings.nhvr_networks.length === 1 &&
-      settings.nhvr_networks[0] === networkName;
+  // Do not repeatedly apply the same recommendation
+  if (lastAppliedNetwork.current === networkName) {
+    return;
+  }
 
-    if (alreadyApplied) return;
+  lastAppliedNetwork.current = networkName;
 
-    updateSettings('nhvr_networks', [networkName]);
-    refetchDirections();
-  }, [
-    routingPreset?.networkOverrideKey,
-    appliedVehicle?.templateId,
-    profile,
-    settings.nhvr_networks,
-    updateSettings,
-    refetchDirections,
-  ]);
+  // Automatically preselect the recommended network
+  updateSettings('nhvr_networks', [networkName]);
+
+  refetchDirections();
+
+}, [
+  routingPreset?.networkOverrideKey,
+  appliedVehicle?.templateId,
+  profile,
+  updateSettings,
+  refetchDirections,
+]);
   useEffect(() => {
   if (profile !== 'truck') return;
 
