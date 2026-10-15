@@ -40,6 +40,19 @@ services:
       - ./valhalla_custom_files:/custom_files:Z
       - ./gtfs_feeds:/gtfs_feeds:Z
 
+  compliance-api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: compliance-api
+    restart: unless-stopped
+    env_file:
+      - ./compliance/.env
+    ports:
+      - "5000:5000"
+    networks:
+      - nhvr_compliance_default
+
 volumes:
   pgrouting_data:
 
