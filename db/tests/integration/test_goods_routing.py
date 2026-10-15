@@ -1,7 +1,7 @@
 # valid request
 # should return resolver result
 
-# missing goods_type_id
+#  missing goods_type_id
 # should return 400
 
 # missing profile_id
