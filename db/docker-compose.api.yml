@@ -1,0 +1,11 @@
+services:
+  compliance-api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: compliance-api
+    restart: unless-stopped
+    env_file:
+      - ./compliance/.env
+    ports:
+      - "5000:5000"
