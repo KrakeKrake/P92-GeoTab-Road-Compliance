@@ -294,6 +294,13 @@ class User(Base):
         Text,
         ForeignKey("compliance.vehicle_profiles.profile_id")
     )
+    favourite_axle_config_id = Column(
+        Text,
+        ForeignKey(
+            "compliance.axle_configurations.axle_config_id"
+        ),
+        nullable=True
+    )
 
     created_at = Column(
         DateTime,

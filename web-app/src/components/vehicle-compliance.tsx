@@ -9,6 +9,7 @@ interface User {
   username: string;
   licence_class_id?: string | null;
   favourite_profile_id?: string | null;
+  favourite_axle_config_id?: string | null;
 }
 
 
@@ -142,6 +143,18 @@ interface GoodsRoutingResponse {
 type ExtraAnswerValue = boolean | string;
 
 type Answers = Record<string, boolean | number>;
+
+/*
+ * Each user, vehicle and axle configuration
+ * has its own saved mass scheme.
+ */
+function massSchemeStorageKey(
+  userId: number | undefined,
+  profileId: string,
+  axleConfigId: string
+) {
+  return `preferred_mass_scheme:${userId ?? 'guest'}:${profileId}:${axleConfigId}`;
+}
 
 
 export const VehicleCompliance = () => {
@@ -490,6 +503,22 @@ export const VehicleCompliance = () => {
           loadedData
         );
 
+
+        if (
+          selectedProfileId === user?.favourite_profile_id &&
+          user?.favourite_axle_config_id &&
+          loadedData.axle_configurations.some(
+            (axle) =>
+              axle.config_id === user.favourite_axle_config_id
+          )
+        ) {
+          setSelectedAxleConfigId(
+            user.favourite_axle_config_id
+          );
+        }
+
+
+
         /*
          * Initialise additional question
          * answers.
@@ -646,6 +675,46 @@ export const VehicleCompliance = () => {
           config.config_id ===
           selectedAxleConfigId
       ) ?? null;
+
+  /*
+ * Restore the saved mass scheme when the
+ * vehicle and axle configuration are loaded.
+ */
+  useEffect(() => {
+    if (!selectedProfileId || !currentAxleConfig) {
+      setSelectedMassScheme('');
+      return;
+    }
+
+    const key = massSchemeStorageKey(
+      user?.user_id,
+      selectedProfileId,
+      currentAxleConfig.config_id
+    );
+
+    const savedScheme = localStorage.getItem(key);
+
+    const isApplicable = currentAxleConfig.mass_limits.some(
+      (limit) =>
+        limit.mass_scheme_id === savedScheme &&
+        limit.applicable &&
+        limit.mass_limit_t !== null
+    );
+
+    if (savedScheme && isApplicable) {
+      setSelectedMassScheme(savedScheme);
+    } else {
+      setSelectedMassScheme('');
+
+      if (savedScheme) {
+        localStorage.removeItem(key);
+      }
+    }
+  }, [
+    user?.user_id,
+    selectedProfileId,
+    currentAxleConfig,
+  ]);
 
 
   /*
@@ -1295,6 +1364,17 @@ export const VehicleCompliance = () => {
    * selection.
    */
   function resetForm() {
+    // Forget the mass scheme for the current axle.
+    if (selectedProfileId && selectedAxleConfigId) {
+      const key = massSchemeStorageKey(
+        user?.user_id,
+        selectedProfileId,
+        selectedAxleConfigId
+      );
+
+      localStorage.removeItem(key);
+    }
+
     setSelectedAxleConfigId('');
     setSelectedMassScheme('');
     setOperatingMass('');
@@ -1677,9 +1757,23 @@ export const VehicleCompliance = () => {
                 selectedMassScheme
               }
               onChange={(event) => {
-                setSelectedMassScheme(
-                  event.target.value
-                );
+                const newScheme = event.target.value;
+
+                setSelectedMassScheme(newScheme);
+
+                if (currentAxleConfig && selectedProfileId) {
+                  const key = massSchemeStorageKey(
+                    user?.user_id,
+                    selectedProfileId,
+                    currentAxleConfig.config_id
+                  );
+
+                  if (newScheme) {
+                    localStorage.setItem(key, newScheme);
+                  } else {
+                    localStorage.removeItem(key);
+                  }
+                }
 
                 setResult(null);
                 setError('');
