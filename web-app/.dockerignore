@@ -1,5 +1,9 @@
-package-lock.json
 yarn.lock
+
+# Local env must not be baked in; values are injected at container start.
+.env
+.env.*
+!.env.example
 
 # IDEs
 .idea/
