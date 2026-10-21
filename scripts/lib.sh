@@ -147,15 +147,31 @@ wait_for_valhalla() {
 }
 
 smoke_test() {
-  local port="${WEB_PORT:-8080}"
+  local port="${WEB_PORT:-8080}" i ok
   if ! command -v curl >/dev/null 2>&1; then
     warn "curl not found; skipping host smoke tests"
     return 0
   fi
-  curl -fsS --max-time 10 "http://127.0.0.1:${port}/valhalla/status" >/dev/null \
-    || warn "web-app /valhalla/status did not answer yet"
-  curl -fsS --max-time 10 "http://127.0.0.1:${port}/api/compliance/profiles-by-licence/HC" >/dev/null \
-    || warn "web-app /api/compliance/... did not answer yet"
+  # Containers can take a few seconds to become reachable after a recreate.
+  ok=0
+  for i in $(seq 1 15); do
+    if curl -fsS --max-time 10 "http://127.0.0.1:${port}/valhalla/status" >/dev/null; then
+      ok=1
+      break
+    fi
+    sleep 2
+  done
+  [[ "$ok" -eq 1 ]] || warn "web-app /valhalla/status did not answer yet"
+
+  ok=0
+  for i in $(seq 1 15); do
+    if curl -fsS --max-time 10 "http://127.0.0.1:${port}/api/compliance/profiles-by-licence/HC" >/dev/null; then
+      ok=1
+      break
+    fi
+    sleep 2
+  done
+  [[ "$ok" -eq 1 ]] || warn "web-app /api/compliance/... did not answer yet"
 }
 
 # ---- tiles -------------------------------------------------------------------
@@ -170,12 +186,22 @@ build_tiles() {
 seed_build_from_live() {
   local copy_admins="$1" # 1 = base PBF unchanged, reuse admin/timezone DBs
   mkdir -p "$BUILD_DIR"
-  [[ -f "$CUSTOM_FILES/valhalla.json" ]] && cp -f "$CUSTOM_FILES/valhalla.json" "$BUILD_DIR/"
-  [[ -f "$CUSTOM_FILES/default_speeds.json" ]] && cp -f "$CUSTOM_FILES/default_speeds.json" "$BUILD_DIR/"
-  if [[ "$copy_admins" -eq 1 ]]; then
-    [[ -f "$CUSTOM_FILES/admins.sqlite" ]] && cp -f "$CUSTOM_FILES/admins.sqlite" "$BUILD_DIR/"
-    [[ -f "$CUSTOM_FILES/timezones.sqlite" ]] && cp -f "$CUSTOM_FILES/timezones.sqlite" "$BUILD_DIR/"
+  if [[ -f "$CUSTOM_FILES/valhalla.json" ]]; then
+    cp -f "$CUSTOM_FILES/valhalla.json" "$BUILD_DIR/"
   fi
+  if [[ -f "$CUSTOM_FILES/default_speeds.json" ]]; then
+    cp -f "$CUSTOM_FILES/default_speeds.json" "$BUILD_DIR/"
+  fi
+  if [[ "$copy_admins" -eq 1 ]]; then
+    if [[ -f "$CUSTOM_FILES/admins.sqlite" ]]; then
+      cp -f "$CUSTOM_FILES/admins.sqlite" "$BUILD_DIR/"
+    fi
+    if [[ -f "$CUSTOM_FILES/timezones.sqlite" ]]; then
+      cp -f "$CUSTOM_FILES/timezones.sqlite" "$BUILD_DIR/"
+    fi
+  fi
+  # Missing optional files are fine; the tile builder creates them.
+  return 0
 }
 
 # Files that make up a usable Valhalla data directory.
@@ -197,6 +223,12 @@ cleanup_stale_pbfs() {
     ! -name 'nhvr.osm.pbf' -print -delete
 }
 
+# Nginx resolves upstream hostnames at startup. Recreate the proxy after
+# Valhalla or the API has been replaced so it picks up the new container IP.
+reload_web_app() {
+  compose up -d --no-deps --force-recreate web-app >/dev/null 2>&1 || true
+}
+
 rollback_build() {
   [[ -d "$OLD_DIR" ]] || die "no .old directory to roll back to"
   log "rolling back tiles"
@@ -213,7 +245,7 @@ rollback_build() {
   done
   compose up -d --no-deps valhalla
   wait_for_valhalla || die "rollback started valhalla but it is not healthy"
-  compose restart web-app >/dev/null 2>&1 || true
+  reload_web_app
   log "rollback complete"
 }
 
@@ -242,9 +274,8 @@ promote_build() {
     rollback_build
     return 1
   fi
-  # Nginx resolves upstream addresses at startup; restart it so a recreated
-  # valhalla container does not leave the proxy pointing at the old IP.
-  compose restart web-app >/dev/null 2>&1 || true
+  # Nginx resolves upstream addresses at startup; the caller refreshes the
+  # proxy after the whole stack is up (see reload_web_app).
   cleanup_stale_pbfs
   if [[ "$keep_old" -eq 1 ]]; then
     log "keeping previous tiles in custom_files/.old"

@@ -131,6 +131,7 @@ if [[ $TILES_ONLY -eq 1 ]]; then
   log "rebuilding Valhalla tiles"
   build_tiles "$BUILD_DIR" -e build_admins=False -e build_time_zones=False
   promote_build "$KEEP_OLD"
+  reload_web_app
   warn "state not updated by --tiles-only"
   smoke_test
   exit 0
@@ -197,13 +198,14 @@ if [[ $SIMPLE -eq 1 ]]; then
     rollback_build
     exit 1
   fi
-  compose restart web-app >/dev/null 2>&1 || true
+  reload_web_app
   cleanup_stale_pbfs
   rm -rf "$OLD_DIR"
 else
   log "building Valhalla tiles (this is the long step)"
   build_tiles "$BUILD_DIR" "${BUILD_ARGS[@]}"
   promote_build "$KEEP_OLD"
+  reload_web_app
 fi
 
 write_state "$CUR_PBF" "$CUR_GPKG"

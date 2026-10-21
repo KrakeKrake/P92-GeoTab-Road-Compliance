@@ -10,6 +10,11 @@
 #   docker compose -f docker-compose.yml up -d
 #
 # One-shot data work is script-driven: ./setup.sh, ./update.sh.
+#
+# Image layout: all services share one repository (IMAGE_REPO) and use a
+# per-service tag, e.g. <repo>:valhalla-latest, <repo>:compliance-api-latest.
+# Docker Hub only supports namespace/repository, so this keeps everything in
+# one repository while still allowing versioned IMAGE_TAG values.
 name: ${COMPOSE_PROJECT_NAME:-nhvr-compliance}
 
 services:
@@ -34,7 +39,7 @@ services:
 
   # Applies db/compliance/migrate.py once; a no-op after the first run.
   db-migrate:
-    image: krakekrake/eat40005/nhvr-compliance-api:latest
+    image: ${IMAGE_REPO:?set IMAGE_REPO in .env}:compliance-api-${IMAGE_TAG:-latest}
     restart: "no"
     command: ["python", "-m", "compliance.migrate"]
     environment:
@@ -46,7 +51,7 @@ services:
       - nhvr
 
   compliance-api:
-    image: krakekrake/eat40005/nhvr-compliance-api:latest
+    image: ${IMAGE_REPO:?set IMAGE_REPO in .env}:compliance-api-${IMAGE_TAG:-latest}
     restart: unless-stopped
     environment:
       DATABASE_URL: postgresql+psycopg2://${DB_USER:-nhvr}:${DB_PASSWORD}@postgis:5432/${DB_NAME:-nhvr_compliance}
@@ -68,7 +73,7 @@ services:
   # Builds tiles into ${VALHALLA_BUILD_DIR}. setup.sh/update.sh point this at
   # custom_files/.build for blue/green updates; "up" does not start it.
   valhalla-tiles:
-    image: krakekrake/eat40005/nhvr-valhalla:latest
+    image: ${IMAGE_REPO:?set IMAGE_REPO in .env}:valhalla-${IMAGE_TAG:-latest}
     restart: "no"
     profiles: ["tools"]
     environment:
@@ -90,7 +95,7 @@ services:
       - nhvr
 
   valhalla:
-    image: krakekrake/eat40005/nhvr-valhalla:latest
+    image: ${IMAGE_REPO:?set IMAGE_REPO in .env}:valhalla-${IMAGE_TAG:-latest}
     restart: unless-stopped
     environment:
       serve_tiles: "True"
@@ -117,7 +122,7 @@ services:
       - nhvr
 
   web-app:
-    image: krakekrake/eat40005/nhvr-web-app:latest
+    image: ${IMAGE_REPO:?set IMAGE_REPO in .env}:web-app-${IMAGE_TAG:-latest}
     restart: unless-stopped
     environment:
       # Runtime config, injected into /config.js when the container starts.
@@ -143,7 +148,7 @@ services:
   # On-demand importer / PostGIS loader. The default command is `help`, so a
   # plain `up` starts it, it exits 0, and it doesnt touch the data.
   nhvr-tools:
-    image: krakekrake/eat40005/nhvr-geotools:latest
+    image: ${IMAGE_REPO:?set IMAGE_REPO in .env}:geotools-${IMAGE_TAG:-latest}
     restart: "no"
     environment:
       NHVR_GPKG_DIR: /data/gpkg

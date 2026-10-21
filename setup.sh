@@ -65,7 +65,7 @@ if [[ $NO_BUILD -eq 0 ]]; then
   if [[ $HAS_BUILD -eq 1 ]]; then
     # Valhalla is a long C++ build. Keep an existing image (including the old
     # localhost/valhalla:nhvr tag) instead of recompiling it every setup run.
-    VALHALLA_IMAGE="${IMAGE_NAMESPACE:-nhvr}/nhvr-valhalla:${IMAGE_TAG:-latest}"
+    VALHALLA_IMAGE="${IMAGE_REPO:?set IMAGE_REPO in .env}:valhalla-${IMAGE_TAG:-latest}"
     log "building the fast images"
     compose build compliance-api web-app nhvr-tools
     if image_present "$VALHALLA_IMAGE"; then
@@ -141,10 +141,16 @@ fi
 
 log "starting the stack"
 compose up -d
+# Recreate the proxy now that every upstream exists, so nginx resolves the
+# current Valhalla/API container addresses.
+reload_web_app
 
 # ---- state -------------------------------------------------------------------
-PBF_STATE=""
-GPKG_STATE=""
+# Preserve the previous fingerprints for steps that were skipped, so a
+# `setup.sh --skip-*` run does not make the next update redo everything.
+read_state
+PBF_STATE="$STATE_PBF"
+GPKG_STATE="$STATE_GPKG"
 [[ $SKIP_PBF -eq 0 && $SKIP_TILES -eq 0 ]] && PBF_STATE="$(fingerprint_pbf)"
 [[ $SKIP_DB -eq 0 ]] && GPKG_STATE="$(fingerprint_gpkg)"
 write_state "$PBF_STATE" "$GPKG_STATE"
