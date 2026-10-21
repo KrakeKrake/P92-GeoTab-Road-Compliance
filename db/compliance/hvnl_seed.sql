@@ -36,7 +36,9 @@ INSERT INTO compliance.vehicle_templates
 VALUES
 ('RIGID_TRUCK', 'Rigid truck', 'rigid'),
 ('PM_SEMI', 'Prime mover + semitrailer', 'articulated'),
-('B_DOUBLE', 'B-double', 'b_double');
+('B_DOUBLE', 'B-double', 'b_double'),
+('TYPE_1_ROAD_TRAIN', 'Type 1 road train', 'road_train'),
+('TYPE_2_ROAD_TRAIN', 'Type 2 road train', 'road_train');
 
 
 -- =========================================================
