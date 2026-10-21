@@ -1,17 +1,31 @@
 import { z } from 'zod';
+import { getAppConfig } from './runtime-config';
 
 const BASE_URL_STORAGE_KEY = 'valhalla_base_url';
 
 const DEFAULT_BASE_URL =
-  import.meta.env.VITE_VALHALLA_URL || 'https://valhalla1.openstreetmap.de';
+  getAppConfig().VITE_VALHALLA_URL || 'https://valhalla1.openstreetmap.de';
 
 const baseUrlSchema = z
   .string()
   .trim()
   .min(1, 'URL cannot be empty')
-  .url('Invalid URL format')
   .refine(
     (url) => {
+      // Same-origin deployments use paths such as /valhalla.
+      if (url.startsWith('/')) return true;
+      try {
+        new URL(url);
+        return true;
+      } catch {
+        return false;
+      }
+    },
+    { message: 'Invalid URL format' }
+  )
+  .refine(
+    (url) => {
+      if (url.startsWith('/')) return true;
       try {
         const parsed = new URL(url);
         return ['http:', 'https:'].includes(parsed.protocol);

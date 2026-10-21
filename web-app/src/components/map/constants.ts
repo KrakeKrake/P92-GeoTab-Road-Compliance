@@ -1,4 +1,6 @@
-const centerCoords = import.meta.env.VITE_CENTER_COORDS?.split(',') || [];
+import { getAppConfig } from '@/utils/runtime-config';
+
+const centerCoords = getAppConfig().VITE_CENTER_COORDS?.split(',') || [];
 
 export const DEFAULT_CENTER: [number, number] = [
   parseFloat(centerCoords[1] || '13.393707'),

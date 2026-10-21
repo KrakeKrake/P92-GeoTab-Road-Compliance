@@ -10,6 +10,7 @@ import { App } from './app';
 import { RootComponent } from './components/root-component';
 import * as TanStackQueryProvider from './lib/tanstack-query/root-provider';
 import { searchParamsSchema, isValidTab } from './utils/route-schemas';
+import { getAppConfig } from './utils/runtime-config';
 import type { Profile } from './stores/common-store';
 import LoginPage from './pages/LoginPage';
 import SignupPage from './pages/SignupPage';
@@ -17,8 +18,8 @@ import ProfilePage from './pages/ProfilePage';
 import AddVehiclePage from './pages/AddVehiclePage';
 import EditVehiclePage from './pages/EditVehiclePage';
 
-const defaultProfile = ((import.meta.env
-  .VITE_DEFAULT_COSTING_MODEL as string) || 'truck') as Profile;
+const defaultProfile = (getAppConfig().VITE_DEFAULT_COSTING_MODEL ||
+  'truck') as Profile;
 
 export const rootRoute = createRootRoute({ component: RootComponent });
 
@@ -118,7 +119,6 @@ export const routeTree = rootRoute.addChildren([
   profileRoute,
   addVehicleRoute,
   editVehicleRoute,
-  
 ]);
 
 export const router = createRouter({
