@@ -38,6 +38,9 @@ mason/
 mason_packages/
 .DS_Store
 
+# local runtime data, not needed by the image
+run/
+
 # tools
 .cproject
 .project
