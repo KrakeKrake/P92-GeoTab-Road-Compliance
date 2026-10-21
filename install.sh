@@ -26,7 +26,7 @@ DB_VOLUME_NAME="${DB_VOLUME_NAME:-${PROJECT_NAME}-pgdata}"
 NHVR_GPKG_DIR="${NHVR_GPKG_DIR:-}"
 OSM_PBF_FILE="${OSM_PBF_FILE:-}"
 DB_PASSWORD="${DB_PASSWORD:-}"
-IMAGE_REPO="${IMAGE_REPO:-krakekrake/eat40005}"
+IMAGE_REPO="${IMAGE_REPO:-docker.io/krakekrake/eat40005}"
 IMAGE_TAG="${IMAGE_TAG:-latest}"
 WEB_PORT="${WEB_PORT:-8080}"
 
@@ -43,7 +43,8 @@ usage() {
   cat <<EOF
 Usage: install.sh [options]
 
-  --dir DIR              install directory (default: \$PWD/nhvr-compliance)
+  --dir DIR              install directory (default: \$PWD/nhvr-compliance;
+                         use . for the current directory)
   --project-name NAME    Compose project name (default: nhvr-compliance)
   --nhvr-gpkg-dir DIR    directory containing the NHVR *.gpkg files
   --osm-pbf FILE         base OSM .pbf file
@@ -83,6 +84,13 @@ while [[ $# -gt 0 ]]; do
     *) die "unknown option: $1 (use --help)" ;;
   esac
 done
+
+# Make Docker Hub explicit unless the first component is a registry. Without
+# this, podman can resolve a short name to a local localhost/... image.
+_first="${IMAGE_REPO%%/*}"
+if [[ "$_first" != *.* && "$_first" != *:* && "$_first" != localhost ]]; then
+  IMAGE_REPO="docker.io/$IMAGE_REPO"
+fi
 
 # ---- gather values -----------------------------------------------------------
 ask() {
@@ -196,6 +204,8 @@ DISPLAY_PORT="${DISPLAY_PORT:-8080}"
 cat <<EOF
 
 Installed into: $INSTALL_DIR
+Manage from:    cd $INSTALL_DIR
+
 Web app:        http://localhost:${DISPLAY_PORT}
 
 Valhalla:       http://localhost:${DISPLAY_PORT}/valhalla/status

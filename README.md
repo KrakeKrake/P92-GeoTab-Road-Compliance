@@ -59,6 +59,17 @@ When it finishes, open:
 - **Valhalla status:** <http://localhost:8080/valhalla/status>
 - **API example:** <http://localhost:8080/api/compliance/profiles-by-licence/HC>
 
+The install is self-contained. The installer does **not** write a Compose file
+into the directory you piped the command from; manage the stack from the
+install directory:
+
+```bash
+cd nhvr-compliance
+docker compose ps
+```
+
+Use `--dir .` if you want to install into the current directory instead.
+
 Only the web app is published. Valhalla and the compliance API are reached
 through the web app's nginx at `/valhalla/` and `/api/`, so the browser only
 talks to one origin.
@@ -71,14 +82,14 @@ curl -fsSL https://raw.githubusercontent.com/KrakeKrake/P92-GeoTab-Road-Complian
   --nhvr-gpkg-dir /data/nhvr \
   --osm-pbf /data/victoria.osm.pbf \
   --db-password 'a-url-safe-password' \
-  --image-repo krakekrake/eat40005
+  --image-repo docker.io/krakekrake/eat40005
 ```
 
 Useful installer options:
 
 | Option | Purpose |
 |---|---|
-| `--dir DIR` | Install somewhere other than `./nhvr-compliance` |
+| `--dir DIR` | Install somewhere other than `./nhvr-compliance` (use `.` for the current directory) |
 | `--project-name NAME` | Compose project/volume/network name prefix |
 | `--no-pull` | Use images already on this host (no registry pull) |
 | `--prepare-only` | Download and write `.env`, but do not run setup |
@@ -86,9 +97,9 @@ Useful installer options:
 | `--branch NAME` | Download from a different git branch (default `main`) |
 
 The images are pulled from `${IMAGE_REPO}:<service>-${IMAGE_TAG}`, for example
-`krakekrake/eat40005:valhalla-latest`. If they are not published yet, install
-from a checkout instead (see [Development](#development)), or push them first
-and set `--image-repo`.
+`docker.io/krakekrake/eat40005:valhalla-latest`. If they are not published yet,
+install from a checkout instead (see [Development](#development)), or push them
+first and set `--image-repo`.
 
 ### If you prefer to install manually
 
@@ -223,8 +234,18 @@ Change `WEB_PORT` in `.env` (and `DB_DEBUG_PORT`, `API_DEBUG_PORT`,
 **The images cannot be pulled.**
 Set `IMAGE_REPO` and `IMAGE_TAG` to where the images were published, or use
 `--no-pull` if they are already on the host. All four images are tags in that
-one repository (for example `krakekrake/eat40005:valhalla-latest`), which is
-what Docker Hub supports.
+one repository (for example `docker.io/krakekrake/eat40005:valhalla-latest`),
+which is what Docker Hub supports. Keep the repository fully qualified
+(`docker.io/...`) so podman does not resolve a local short name to `localhost`.
+
+**`docker compose up` says no compose file was found.**
+Run it from the install directory (`cd nhvr-compliance`) or pass the file
+explicitly:
+
+```bash
+docker compose -f nhvr-compliance/docker-compose.yml \
+  --env-file nhvr-compliance/.env up -d
+```
 
 **The first run looks stuck.**
 It is importing the PBF and building tiles. Follow
