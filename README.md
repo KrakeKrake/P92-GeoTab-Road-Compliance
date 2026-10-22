@@ -2,13 +2,12 @@
 
 A self-contained web application for heavy-vehicle route compliance:
 
-- a map-based web app for planning truck routes and isochrones
+- a Valhalla-based web app for planning truck routes and isochrones
 - a Valhalla routing server with NHVR network access built into the graph
-- a PostGIS database and compliance API for vehicle profiles, mass/dimension
+- a PostgreSQL database and compliance API for vehicle profiles, mass/dimension
   checks, and NHVR network lookup
 
-This README is for installing and running it. If you want to change the code or
-build the images yourself, see [Development](#development) at the end.
+This README is for installing and running it. For development see [Development](#development) at the end.
 
 ## What you need
 
