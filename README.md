@@ -2,13 +2,12 @@
 
 A self-contained web application for heavy-vehicle route compliance:
 
-- a map-based web app for planning truck routes and isochrones
+- a Valhalla-based web app for planning truck routes and isochrones
 - a Valhalla routing server with NHVR network access built into the graph
-- a PostGIS database and compliance API for vehicle profiles, mass/dimension
+- a PostgreSQL database and compliance API for vehicle profiles, mass/dimension
   checks, and NHVR network lookup
 
-This README is for installing and running it. If you want to change the code or
-build the images yourself, see [Development](#development) at the end.
+This README is for installing and running it. For development see [Development](#development) at the end.
 
 ## What you need
 
@@ -26,22 +25,22 @@ The NHVR GeoPackages and the OSM extract are read from your machine and are
 
 ## Install (one command)
 
-The installer pulls the prebuilt images from the namespace you choose. If you
+The installer pulls the prebuilt images from the choosen namespace. If you
 are the developer and have not published the images yet, build and push them
-first (see [Development](#development)), then run the installer.
+first (see [Development](#development)), then run the installer. Otherwise it defaults to *my one*!
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/KrakeKrake/P92-GeoTab-Road-Compliance/main/install.sh | bash
 ```
 
 The installer does not clone the source tree. It downloads the Compose file and
-scripts (a few KB) and pulls the runtime images (several GB). Your GeoPackages
-and OSM extract stay on your machine and are only read by the containers.
+scripts and pulls the runtime images (potentially several GB). The GeoPackages
+and OSM extract must be provided by you.
 
 The installer:
 
 1. downloads a small deployment bundle (Compose file, setup/update scripts,
-   `.env` template) into `./nhvr-compliance` — **not** the source tree;
+   `.env` template) into `./nhvr-compliance`
 2. asks for the NHVR GeoPackage folder, the base OSM `.pbf` file, a database
    password (press Enter to generate one), the image namespace, and the web
    port;
