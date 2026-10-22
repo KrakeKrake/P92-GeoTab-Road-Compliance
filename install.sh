@@ -34,6 +34,7 @@ ASSUME_YES=0
 NO_PULL=0
 RECONFIGURE=0
 PREPARE_ONLY=0
+RESET_DB=0
 
 log()  { printf '\033[1;32m==>\033[0m %s\n' "$*"; }
 warn() { printf '\033[1;33mWARN:\033[0m %s\n' "$*" >&2; }
@@ -55,6 +56,8 @@ Usage: install.sh [options]
   --branch NAME          git branch to download from (default: main)
   --no-pull              do not pull images (use images already on this host)
   --reconfigure          recreate .env (a backup is kept)
+  --reset-db             delete the existing Postgres volume first
+                         (DESTROYS the database; use on a failed fresh install)
   --prepare-only         download/configure only; do not run setup.sh
   --yes                  non-interactive; fail if required values are missing
   -h, --help             show this help
@@ -78,6 +81,7 @@ while [[ $# -gt 0 ]]; do
     --branch) REPO_BRANCH="$2"; RAW_BASE="https://raw.githubusercontent.com/${REPO_OWNER}/${REPO_NAME}/${REPO_BRANCH}"; shift 2 ;;
     --no-pull) NO_PULL=1; shift ;;
     --reconfigure) RECONFIGURE=1; shift ;;
+    --reset-db) RESET_DB=1; shift ;;
     --prepare-only) PREPARE_ONLY=1; shift ;;
     --yes|-y) ASSUME_YES=1; shift ;;
     -h|--help) usage; exit 0 ;;
@@ -108,19 +112,55 @@ random_password() {
   printf '%s' "${value:-nhvr$(date +%s)}"
 }
 
-if [[ -f "$INSTALL_DIR/.env" && $RECONFIGURE -eq 0 ]]; then
+docker_cli() {
+  if command -v docker >/dev/null 2>&1; then
+    printf '%s' docker
+  elif command -v podman >/dev/null 2>&1; then
+    printf '%s' podman
+  fi
+}
+
+volume_exists() {
+  local cli
+  cli="$(docker_cli)"
+  [[ -n "$cli" ]] || return 1
+  "$cli" volume inspect "$DB_VOLUME_NAME" >/dev/null 2>&1
+}
+
+remove_db_volume() {
+  local cli
+  cli="$(docker_cli)"
+  [[ -n "$cli" ]] || die "cannot reset $DB_VOLUME_NAME: docker/podman not found"
+  volume_exists || return 0
+  log "removing database volume $DB_VOLUME_NAME"
+  "$cli" volume rm "$DB_VOLUME_NAME" >/dev/null 2>&1 \
+    || die "could not remove volume $DB_VOLUME_NAME; stop the stack first (docker compose down) and re-run with --reset-db"
+}
+
+HAVE_ENV=0
+[[ -f "$INSTALL_DIR/.env" && $RECONFIGURE -eq 0 ]] && HAVE_ENV=1
+
+if [[ $HAVE_ENV -eq 1 ]]; then
   log "using existing $INSTALL_DIR/.env"
 else
   if [[ $ASSUME_YES -eq 0 ]]; then
     [[ -n "$NHVR_GPKG_DIR" ]] || NHVR_GPKG_DIR="$(ask 'Directory containing the NHVR .gpkg files')"
     [[ -n "$OSM_PBF_FILE" ]] || OSM_PBF_FILE="$(ask 'Path to the base OSM .pbf file')"
-    [[ -n "$DB_PASSWORD" ]] || DB_PASSWORD="$(ask 'Database password (press Enter to generate one)' "$(random_password)")"
+    if [[ -z "$DB_PASSWORD" ]]; then
+      if [[ $RESET_DB -eq 0 ]] && volume_exists; then
+        warn "Postgres volume '$DB_VOLUME_NAME' already exists, so a new password will not be applied to it."
+        DB_PASSWORD="$(ask "Existing database password for $DB_VOLUME_NAME (leave blank to abort)" '')"
+        [[ -n "$DB_PASSWORD" ]] || die "refusing to reuse volume '$DB_VOLUME_NAME' without its password; pass --db-password or use --reset-db to delete it"
+      else
+        DB_PASSWORD="$(ask 'Database password (press Enter to generate one)' "$(random_password)")"
+      fi
+    fi
     IMAGE_REPO="$(ask 'Docker Hub repository for the images (namespace/repo)' "$IMAGE_REPO")"
     WEB_PORT="$(ask 'Web port' "$WEB_PORT")"
   fi
 fi
 
-if [[ -f "$INSTALL_DIR/.env" && $RECONFIGURE -eq 0 ]]; then
+if [[ $HAVE_ENV -eq 1 ]]; then
   # setup.sh will validate the existing values.
   :
 else
@@ -129,7 +169,12 @@ else
   compgen -G "$NHVR_GPKG_DIR/*.gpkg" >/dev/null || die "no *.gpkg files in $NHVR_GPKG_DIR"
   [[ -n "$OSM_PBF_FILE" ]] || die "OSM PBF path is required (--osm-pbf or interactive prompt)"
   [[ -f "$OSM_PBF_FILE" ]] || die "OSM PBF not found: $OSM_PBF_FILE"
-  [[ -n "$DB_PASSWORD" ]] || DB_PASSWORD="$(random_password)"
+  if [[ -z "$DB_PASSWORD" ]]; then
+    if [[ $RESET_DB -eq 0 ]] && volume_exists; then
+      die "Postgres volume '$DB_VOLUME_NAME' already exists; pass --db-password with its password, or --reset-db to delete it"
+    fi
+    DB_PASSWORD="$(random_password)"
+  fi
   # setup.sh runs from the install directory, so store absolute paths.
   NHVR_GPKG_DIR="$(cd "$NHVR_GPKG_DIR" && pwd)"
   OSM_PBF_FILE="$(cd "$(dirname "$OSM_PBF_FILE")" && pwd)/$(basename "$OSM_PBF_FILE")"
@@ -212,6 +257,10 @@ Valhalla:       http://localhost:${DISPLAY_PORT}/valhalla/status
 Compliance API: http://localhost:${DISPLAY_PORT}/api/compliance/profiles-by-licence/HC
 
 EOF
+
+if [[ $RESET_DB -eq 1 ]]; then
+  remove_db_volume
+fi
 
 if [[ $PREPARE_ONLY -eq 1 ]]; then
   log "prepared only; run: cd $INSTALL_DIR && ./setup.sh"

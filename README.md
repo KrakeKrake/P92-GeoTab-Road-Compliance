@@ -94,6 +94,7 @@ Useful installer options:
 | `--no-pull` | Use images already on this host (no registry pull) |
 | `--prepare-only` | Download and write `.env`, but do not run setup |
 | `--reconfigure` | Recreate `.env` (the old one is kept as `.env.bak`) |
+| `--reset-db` | Delete the existing Postgres volume first (**destroys database data**) |
 | `--branch NAME` | Download from a different git branch (default `main`) |
 
 The images are pulled from `${IMAGE_REPO}:<service>-${IMAGE_TAG}`, for example
@@ -225,6 +226,24 @@ Use a URL-safe password (letters, digits, `-`, `_`) because it is embedded in a
 database URL.
 
 ## Troubleshooting
+
+**`password authentication failed for user "nhvr"` during setup.**
+Postgres only applies `DB_PASSWORD` when it initialises an empty volume. If a
+volume from an earlier install is still present, the new `.env` password will
+not match it. A failed first install leaves that volume behind, so the next run
+generates a different password and hits this error. Either keep the original
+password, change the role in the running container, or erase the volume if it
+holds no data:
+
+```bash
+cd nhvr-compliance
+docker compose down
+docker volume rm nhvr-compliance-pgdata
+./setup.sh              # or re-run install.sh
+```
+
+`install.sh --reset-db` does the volume removal for you. On a fresh install the
+installer now refuses to generate a new password when the volume already exists.
 
 **A port is already in use.**
 Change `WEB_PORT` in `.env` (and `DB_DEBUG_PORT`, `API_DEBUG_PORT`,
