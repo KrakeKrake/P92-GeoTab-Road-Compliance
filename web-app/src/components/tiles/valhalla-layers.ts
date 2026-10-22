@@ -16,7 +16,13 @@ const TILE_JSON_ENCODED =
   '%7B%22verbose%22%3A%20true%2C%20%22tile%22%3A%7B%22z%22%3A{z}%2C%22x%22%3A{x}%2C%22y%22%3A{y}%7D%7D';
 
 export function getValhallaTileUrl(): string {
-  const baseUrl = normalizeBaseUrl(getBaseUrl());
+  let baseUrl = normalizeBaseUrl(getBaseUrl());
+  // MapLibre constructs a Request from the tile template, and Request requires
+  // an absolute URL. Runtime config uses a same-origin path such as /valhalla.
+  if (typeof window !== 'undefined') {
+    baseUrl = new URL(baseUrl, window.location.origin).toString();
+    if (baseUrl.endsWith('/')) baseUrl = baseUrl.slice(0, -1);
+  }
   return `${baseUrl}/tile?json=${TILE_JSON_ENCODED}`;
 }
 

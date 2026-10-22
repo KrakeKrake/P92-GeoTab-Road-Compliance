@@ -1,4 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
+import { getAppConfig } from '@/utils/runtime-config';
 
 export interface NetworkAccessDetail {
   networkName: string;
@@ -8,8 +9,9 @@ export interface NetworkAccessDetail {
 
 export type NetworkAccessDetailMap = Record<string, NetworkAccessDetail[]>;
 
-const NHVR_API_URL =
-  import.meta.env.VITE_NHVR_API_URL || 'http://localhost:5000';
+const NHVR_API_URL = (
+  getAppConfig().VITE_NHVR_API_URL ?? 'http://localhost:5000'
+).replace(/\/$/, '');
 
 async function fetchNetworkAccessByIds(
   wayIds: number[]

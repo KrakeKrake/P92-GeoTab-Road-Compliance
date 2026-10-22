@@ -26,5 +26,6 @@ COPY . .
 # Flask API port
 EXPOSE 5000
 
-# Start Flask API
-CMD ["flask", "--app", "api:app", "run", "--host=0.0.0.0", "--port=5000"]
+# Gunicorn instead of Flask's development server.
+ENV API_WORKERS=2
+CMD ["sh", "-c", "exec gunicorn --workers ${API_WORKERS:-2} --bind 0.0.0.0:5000 --access-logfile - --error-logfile - api:app"]

@@ -146,7 +146,6 @@ def main():
 
     output = args.output or args.input + ".nhvr.osm.pbf"
     networks = read_gpkgs(args.nhvr_dir) # Read the NHVR data into memory
-    print(networks) #Debug
     if not networks:
         sys.exit("no NHVR way matches found, aborting")
 

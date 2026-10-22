@@ -5,6 +5,7 @@ import type {
 } from '@/components/map/types';
 import { useCommonStore } from '@/stores/common-store';
 import { useNetworkAccessStore } from '@/stores/nhvr-store';
+import { getAppConfig } from '@/utils/runtime-config';
 
 const ACCESS_MAP: Record<number, NetworkAccessType> = {
   0: 'allowed',
@@ -12,8 +13,18 @@ const ACCESS_MAP: Record<number, NetworkAccessType> = {
   2: 'restricted',
 };
 
-const NHVR_API_URL =
-  import.meta.env.VITE_NHVR_API_URL || 'http://localhost:5000';
+interface RawNetworkAccess {
+  networkName: string;
+  access: number;
+  description?: string | null;
+  manager?: string | null;
+}
+
+// `??` keeps an explicitly empty value, which means "same origin" behind the
+// web app's nginx. `||` would silently fall back to localhost.
+const NHVR_API_URL = (
+  getAppConfig().VITE_NHVR_API_URL ?? 'http://localhost:5000'
+).replace(/\/$/, '');
 
 async function fetchNetworkAccess(
   networks: string[]
@@ -27,7 +38,7 @@ async function fetchNetworkAccess(
   const raw = await response.json();
   const map: NetworkAccessMap = {};
   for (const [wayId, entries] of Object.entries(raw)) {
-    map[wayId] = (entries as any[]).map((e) => ({
+    map[wayId] = (entries as RawNetworkAccess[]).map((e) => ({
       networkName: e.networkName,
       access: ACCESS_MAP[e.access] ?? 'allowed',
       description: e.description ?? '',

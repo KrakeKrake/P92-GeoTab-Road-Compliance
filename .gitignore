@@ -11,3 +11,6 @@ dist/
 .env
 **/.idea
 nhvr-valhalla/test/data/
+/custom_files/
+/.state/
+nhvr-valhalla/run/nhvr-importer/import.log

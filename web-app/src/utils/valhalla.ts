@@ -9,11 +9,12 @@ import type {
   ValhallaWarning,
 } from '@/components/types';
 import { getBaseUrl } from './base-url';
+import { getAppConfig } from './runtime-config';
 
 export const getValhallaUrl = () => getBaseUrl();
 
 export const VALHALLA_CLIENT_HEADERS = {
-  'X-Client-Id': import.meta.env.VITE_CLIENT_ID ?? 'unknown-web-app',
+  'X-Client-Id': getAppConfig().VITE_CLIENT_ID ?? 'unknown-web-app',
 } as const;
 
 export const buildLocateRequest = (
@@ -83,7 +84,10 @@ export const buildDirectionsRequest = ({
   const nhvrNetworks = settings.costing.nhvr_networks;
   if (nhvrNetworks && nhvrNetworks.length > 0) {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    (req.json as any).filters = { attributes: ['edge.nhvr_networks', 'edge.way_id'], action: 'include' };
+    (req.json as any).filters = {
+      attributes: ['edge.nhvr_networks', 'edge.way_id'],
+      action: 'include',
+    };
   }
   return req;
 };

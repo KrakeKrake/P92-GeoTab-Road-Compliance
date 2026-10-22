@@ -1,0 +1,205 @@
+# Full stack, deployment definition (images only).
+#
+# Build/push on a development machine:
+#   docker compose build && docker compose push
+# (docker-compose.override.yml is loaded automatically and adds the build
+# contexts and the debug ports. Isnt that cool?)
+#
+# Deploy on a server:
+#   docker compose -f docker-compose.yml pull
+#   docker compose -f docker-compose.yml up -d
+#
+# One-shot data work is script-driven: ./setup.sh, ./update.sh.
+#
+# Image layout: all services share one repository (IMAGE_REPO) and use a
+# per-service tag, e.g. <repo>:valhalla-latest, <repo>:compliance-api-latest.
+# Docker Hub only supports namespace/repository, so this keeps everything in
+# one repository while still allowing versioned IMAGE_TAG values.
+name: ${COMPOSE_PROJECT_NAME:-nhvr-compliance}
+
+services:
+  postgis:
+    image: docker.io/pgrouting/pgrouting:18-3.6-4.0
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${DB_NAME:-nhvr_compliance}
+      POSTGRES_USER: ${DB_USER:-nhvr}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?set DB_PASSWORD in .env}
+      POSTGRES_HOST_AUTH_METHOD: md5
+    command: postgres -c listen_addresses='*'
+    volumes:
+      - pgrouting_data:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    networks:
+      - nhvr
+
+  # Applies db/compliance/migrate.py once; a no-op after the first run.
+  db-migrate:
+    image: ${IMAGE_REPO:?set IMAGE_REPO in .env}:compliance-api-${IMAGE_TAG:-latest}
+    restart: "no"
+    command: ["python", "-m", "compliance.migrate"]
+    environment:
+      DATABASE_URL: postgresql+psycopg2://${DB_USER:-nhvr}:${DB_PASSWORD}@postgis:5432/${DB_NAME:-nhvr_compliance}
+    depends_on:
+      postgis:
+        condition: service_healthy
+    networks:
+      - nhvr
+
+  compliance-api:
+    image: ${IMAGE_REPO:?set IMAGE_REPO in .env}:compliance-api-${IMAGE_TAG:-latest}
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: postgresql+psycopg2://${DB_USER:-nhvr}:${DB_PASSWORD}@postgis:5432/${DB_NAME:-nhvr_compliance}
+      API_WORKERS: ${API_WORKERS:-2}
+    depends_on:
+      postgis:
+        condition: service_healthy
+      db-migrate:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:5000/api/compliance/profiles-by-licence/HC').read()"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 20s
+    networks:
+      - nhvr
+
+  # Builds tiles into ${VALHALLA_BUILD_DIR}. setup.sh/update.sh point this at
+  # custom_files/.build for blue/green updates; "up" does not start it.
+  valhalla-tiles:
+    image: ${IMAGE_REPO:?set IMAGE_REPO in .env}:valhalla-${IMAGE_TAG:-latest}
+    restart: "no"
+    profiles: ["tools"]
+    environment:
+      serve_tiles: "False"
+      build_tar: "True"
+      update_existing_config: "True"
+      # The build directory is empty on purpose, so this must not skip the build.
+      use_tiles_ignore_pbf: "False"
+      force_rebuild: "False"
+      build_admins: ${VALHALLA_BUILD_ADMINS:-True}
+      build_time_zones: ${VALHALLA_BUILD_TIME_ZONES:-True}
+      build_elevation: ${VALHALLA_BUILD_ELEVATION:-False}
+      build_transit: ${VALHALLA_BUILD_TRANSIT:-False}
+      LOGGING_LEVEL: ${VALHALLA_LOG_LEVEL:-INFO}
+      server_threads: ${VALHALLA_SERVER_THREADS:-}
+    volumes:
+      - ${VALHALLA_BUILD_DIR:-./custom_files}:/custom_files:z
+    networks:
+      - nhvr
+
+  valhalla:
+    image: ${IMAGE_REPO:?set IMAGE_REPO in .env}:valhalla-${IMAGE_TAG:-latest}
+    restart: unless-stopped
+    environment:
+      serve_tiles: "True"
+      build_tar: "True"
+      update_existing_config: "True"
+      # Tiles are rebuilt explicitly by update.sh, never on a plain restart.
+      use_tiles_ignore_pbf: "True"
+      force_rebuild: "False"
+      build_admins: "False"
+      build_time_zones: "False"
+      build_elevation: "False"
+      build_transit: "False"
+      LOGGING_LEVEL: ${VALHALLA_LOG_LEVEL:-INFO}
+      server_threads: ${VALHALLA_SERVER_THREADS:-}
+    volumes:
+      - ./custom_files:/custom_files:z
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:8002/status >/dev/null"]
+      interval: 15s
+      timeout: 5s
+      retries: 20
+      start_period: 30s
+    networks:
+      - nhvr
+
+  web-app:
+    image: ${IMAGE_REPO:?set IMAGE_REPO in .env}:web-app-${IMAGE_TAG:-latest}
+    restart: unless-stopped
+    environment:
+      # Runtime config, injected into /config.js when the container starts.
+      VITE_VALHALLA_URL: ${VITE_VALHALLA_URL:-/valhalla}
+      VITE_NHVR_API_URL: ${VITE_NHVR_API_URL:-}
+      VITE_NOMINATIM_URL: ${VITE_NOMINATIM_URL:-https://nominatim.openstreetmap.org}
+      VITE_CENTER_COORDS: ${VITE_CENTER_COORDS:--37.8136,144.9631}
+      VITE_DEFAULT_COSTING_MODEL: ${VITE_DEFAULT_COSTING_MODEL:-truck}
+      VITE_CLIENT_ID: ${VITE_CLIENT_ID:-nhvr-web-app}
+    depends_on:
+      - compliance-api
+    ports:
+      - "${WEB_BIND_ADDR:-0.0.0.0}:${WEB_PORT:-8080}:80"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1/ >/dev/null"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+    networks:
+      - nhvr
+
+  # On-demand importer / PostGIS loader. The default command is `help`, so a
+  # plain `up` starts it, it exits 0, and it doesnt touch the data.
+  nhvr-tools:
+    image: ${IMAGE_REPO:?set IMAGE_REPO in .env}:geotools-${IMAGE_TAG:-latest}
+    restart: "no"
+    environment:
+      NHVR_GPKG_DIR: /data/gpkg
+      OSM_PBF_DIR: /data/osm
+      OSM_PBF_NAME: ${OSM_PBF_NAME:-}
+      OUTPUT_PBF: /custom_files/nhvr.osm.pbf
+      PGHOST: postgis
+      PGPORT: "5432"
+      PGDATABASE: ${DB_NAME:-nhvr_compliance}
+      PGUSER: ${DB_USER:-nhvr}
+      PGPASSWORD: ${DB_PASSWORD}
+    volumes:
+      - ${NHVR_GPKG_DIR:-./db/nhvr_gpkg}:/data/gpkg:ro,z
+      - ${OSM_PBF_DIR:-./nhvr-valhalla/run/nhvr-importer/osm.pbf}:/data/osm:ro,z
+      - ./custom_files:/custom_files:z
+    networks:
+      - nhvr
+
+    # To allow for CORS access from not the web app, if you want to connect it to some other services.
+  valhalla-cors:
+    image: docker.io/library/nginx:alpine
+    restart: unless-stopped
+    profiles: ["external"]
+    depends_on:
+      valhalla:
+        condition: service_healthy
+    ports:
+      - "${VALHALLA_CORS_PORT:-8003}:80"
+    volumes:
+      - ./nginx.conf:/etc/nginx/conf.d/default.conf:z
+    networks:
+      - nhvr
+
+# Adminer for DB management
+  adminer:
+    image: docker.io/library/adminer:latest
+    restart: unless-stopped
+    profiles: ["tools"]
+    depends_on:
+      postgis:
+        condition: service_healthy
+    ports:
+      - "127.0.0.1:${ADMINER_PORT:-5433}:8080"
+    networks:
+      - nhvr
+
+volumes:
+  pgrouting_data:
+    name: ${DB_VOLUME_NAME:-nhvr-compliance-pgdata}
+
+networks:
+  nhvr:
+    driver: bridge
+    name: ${NETWORK_NAME:-nhvr_compliance_default}
