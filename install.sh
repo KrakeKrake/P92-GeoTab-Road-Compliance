@@ -18,7 +18,7 @@ REPO_NAME="${REPO_NAME:-P92-GeoTab-Road-Compliance}"
 REPO_BRANCH="${REPO_BRANCH:-main}"
 RAW_BASE="${RAW_BASE:-https://raw.githubusercontent.com/${REPO_OWNER}/${REPO_NAME}/${REPO_BRANCH}}"
 
-INSTALL_DIR="${INSTALL_DIR:-$PWD/nhvr-compliance}"
+INSTALL_DIR="${INSTALL_DIR:-}"
 PROJECT_NAME="${COMPOSE_PROJECT_NAME:-nhvr-compliance}"
 NETWORK_NAME="${NETWORK_NAME:-${PROJECT_NAME//-/_}_default}"
 DB_VOLUME_NAME="${DB_VOLUME_NAME:-${PROJECT_NAME}-pgdata}"
@@ -35,6 +35,8 @@ NO_PULL=0
 RECONFIGURE=0
 PREPARE_ONLY=0
 RESET_DB=0
+FORCE=0
+COPY_DATA=0
 
 log()  { printf '\033[1;32m==>\033[0m %s\n' "$*"; }
 warn() { printf '\033[1;33mWARN:\033[0m %s\n' "$*" >&2; }
@@ -44,8 +46,9 @@ usage() {
   cat <<EOF
 Usage: install.sh [options]
 
-  --dir DIR              install directory (default: \$PWD/nhvr-compliance;
-                         use . for the current directory)
+  --dir DIR              install directory (default: the current directory)
+  --force                replace an existing deployment bundle in --dir
+  --copy-data            copy the GeoPackages and OSM PBF into <dir>/data
   --project-name NAME    Compose project name (default: nhvr-compliance)
   --nhvr-gpkg-dir DIR    directory containing the NHVR *.gpkg files
   --osm-pbf FILE         base OSM .pbf file
@@ -82,6 +85,8 @@ while [[ $# -gt 0 ]]; do
     --no-pull) NO_PULL=1; shift ;;
     --reconfigure) RECONFIGURE=1; shift ;;
     --reset-db) RESET_DB=1; shift ;;
+    --force) FORCE=1; shift ;;
+    --copy-data) COPY_DATA=1; shift ;;
     --prepare-only) PREPARE_ONLY=1; shift ;;
     --yes|-y) ASSUME_YES=1; shift ;;
     -h|--help) usage; exit 0 ;;
@@ -137,8 +142,44 @@ remove_db_volume() {
     || die "could not remove volume $DB_VOLUME_NAME; stop the stack first (docker compose down) and re-run with --reset-db"
 }
 
+# ---- install directory -------------------------------------------------------
+if [[ -z "$INSTALL_DIR" ]]; then
+  if [[ $ASSUME_YES -eq 1 ]]; then
+    INSTALL_DIR="."
+  else
+    INSTALL_DIR="$(ask 'Install directory' '.')"
+  fi
+fi
+[[ -n "$INSTALL_DIR" ]] || INSTALL_DIR="."
+[[ -e "$INSTALL_DIR" && ! -d "$INSTALL_DIR" ]] \
+  && die "install path exists and is not a directory: $INSTALL_DIR"
+mkdir -p "$INSTALL_DIR"
+INSTALL_DIR="$(cd "$INSTALL_DIR" && pwd -P)"
+
+# Do not replace the checkout's own compose/setup files by accident.
+if [[ "$INSTALL_DIR" == "$(pwd -P)" && -d "$PWD/nhvr-valhalla" && -d "$PWD/web-app" ]]; then
+  die "refusing to install into the source checkout; run from a deployment directory or pass --dir <dir>"
+fi
+
+# Do not silently overwrite an existing deployment bundle. A lone .env is
+# allowed (e.g. retrying a failed install); --force replaces the bundle.
+existing_bundle=0
+for f in docker-compose.yml setup.sh update.sh scripts/lib.sh; do
+  [[ -e "$INSTALL_DIR/$f" ]] && existing_bundle=1
+done
+if [[ $existing_bundle -eq 1 && $FORCE -eq 0 ]]; then
+  die "$INSTALL_DIR already contains a deployment bundle; use --force to replace it or --dir <other-dir>"
+fi
+
 HAVE_ENV=0
 [[ -f "$INSTALL_DIR/.env" && $RECONFIGURE -eq 0 ]] && HAVE_ENV=1
+if [[ $HAVE_ENV -eq 1 ]]; then
+  # Avoid silently reusing an unrelated .env from whatever directory we ran in.
+  if ! grep -q '^NHVR_GPKG_DIR=' "$INSTALL_DIR/.env" \
+     || ! grep -q '^IMAGE_REPO=' "$INSTALL_DIR/.env"; then
+    die "$INSTALL_DIR/.env does not look like a GeoTab Road Compliance config; use --reconfigure or another --dir"
+  fi
+fi
 
 if [[ $HAVE_ENV -eq 1 ]]; then
   log "using existing $INSTALL_DIR/.env"
@@ -178,6 +219,36 @@ else
   # setup.sh runs from the install directory, so store absolute paths.
   NHVR_GPKG_DIR="$(cd "$NHVR_GPKG_DIR" && pwd)"
   OSM_PBF_FILE="$(cd "$(dirname "$OSM_PBF_FILE")" && pwd)/$(basename "$OSM_PBF_FILE")"
+fi
+
+# ---- optional data copy ------------------------------------------------------
+if [[ $COPY_DATA -eq 1 ]]; then
+  if [[ $HAVE_ENV -eq 1 ]]; then
+    warn "--copy-data ignored when reusing an existing .env (use --reconfigure)"
+  else
+    DATA_GPKG="$INSTALL_DIR/data/nhvr_gpkg"
+    DATA_OSM="$INSTALL_DIR/data/osm"
+    if [[ "$DATA_GPKG" == "$NHVR_GPKG_DIR" ]]; then
+      log "GeoPackages are already in $DATA_GPKG"
+    elif [[ "$DATA_GPKG" == "$NHVR_GPKG_DIR"/* ]]; then
+      die "install data directory is inside NHVR_GPKG_DIR; choose another --dir"
+    else
+      log "copying GeoPackages into $DATA_GPKG (this can take a while)"
+      rm -rf "$DATA_GPKG"
+      mkdir -p "$DATA_GPKG"
+      cp -a "$NHVR_GPKG_DIR/." "$DATA_GPKG/"
+      NHVR_GPKG_DIR="$DATA_GPKG"
+    fi
+    OSM_DEST="$DATA_OSM/$(basename "$OSM_PBF_FILE")"
+    if [[ "$OSM_PBF_FILE" -ef "$OSM_DEST" ]]; then
+      log "OSM PBF is already in $DATA_OSM"
+    else
+      log "copying OSM PBF into $DATA_OSM"
+      mkdir -p "$DATA_OSM"
+      cp -a "$OSM_PBF_FILE" "$OSM_DEST"
+    fi
+    OSM_PBF_FILE="$OSM_DEST"
+  fi
 fi
 
 # ---- download the deployment bundle -----------------------------------------

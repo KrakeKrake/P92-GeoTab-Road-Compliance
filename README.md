@@ -25,11 +25,12 @@ The NHVR GeoPackages and the OSM extract are read from your machine and are
 
 ## Install (one command)
 
-The installer pulls the prebuilt images from the namespace you choose. If you
+The installer pulls the prebuilt images from the repository you choose. If you
 are the developer and have not published the images yet, build and push them
 first (see [Development](#development)), then run the installer.
 
 ```bash
+mkdir -p ~/nhvr && cd ~/nhvr
 curl -fsSL https://raw.githubusercontent.com/KrakeKrake/P92-GeoTab-Road-Compliance/main/install.sh | bash
 ```
 
@@ -39,12 +40,12 @@ and OSM extract stay on your machine and are only read by the containers.
 
 The installer:
 
-1. downloads a small deployment bundle (Compose file, setup/update scripts,
-   `.env` template) into `./nhvr-compliance` — **not** the source tree;
+1. installs the deployment bundle (Compose file, setup/update scripts, `.env`
+   template) into the current directory by default — **not** the source tree;
 2. asks for the NHVR GeoPackage folder, the base OSM `.pbf` file, a database
    password (press Enter to generate one), the image namespace, and the web
    port;
-3. writes `./nhvr-compliance/.env`;
+3. writes `.env`;
 4. pulls the prebuilt images, imports the data, builds the Valhalla tiles and
    starts the stack.
 
@@ -58,16 +59,25 @@ When it finishes, open:
 - **Valhalla status:** <http://localhost:8080/valhalla/status>
 - **API example:** <http://localhost:8080/api/compliance/profiles-by-licence/HC>
 
-The install is self-contained. The installer does **not** write a Compose file
-into the directory you piped the command from; manage the stack from the
-install directory:
+The install directory is self-contained. Manage the stack from there:
 
 ```bash
-cd nhvr-compliance
+cd ~/nhvr
 docker compose ps
 ```
 
-Use `--dir .` if you want to install into the current directory instead.
+Use `--dir DIR` to install somewhere else. Do not install into the source
+checkout; the installer refuses that on purpose. If the target already contains
+a deployment bundle, it refuses to overwrite it unless you pass `--force`.
+
+What lives where:
+
+| Item | Location |
+|---|---|
+| Compose file, scripts, `.env`, `custom_files/` | The install directory (for example `~/nhvr`) |
+| Containers, network, Postgres volume | Managed by Docker/Podman under the Compose project name (`nhvr-compliance` by default) |
+| Database data | The Compose volume (`nhvr-compliance-pgdata` by default) |
+| Images | `${IMAGE_REPO}:<service>-${IMAGE_TAG}` in your registry |
 
 Only the web app is published. Valhalla and the compliance API are reached
 through the web app's nginx at `/valhalla/` and `/api/`, so the browser only
@@ -88,13 +98,20 @@ Useful installer options:
 
 | Option | Purpose |
 |---|---|
-| `--dir DIR` | Install somewhere other than `./nhvr-compliance` (use `.` for the current directory) |
+| `--dir DIR` | Install somewhere other than the current directory |
+| `--force` | Replace an existing deployment bundle in the target directory |
+| `--copy-data` | Copy the GeoPackages and selected OSM PBF into `<dir>/data` (can be many GB) |
 | `--project-name NAME` | Compose project/volume/network name prefix |
 | `--no-pull` | Use images already on this host (no registry pull) |
 | `--prepare-only` | Download and write `.env`, but do not run setup |
 | `--reconfigure` | Recreate `.env` (the old one is kept as `.env.bak`) |
 | `--reset-db` | Delete the existing Postgres volume first (**destroys database data**) |
 | `--branch NAME` | Download from a different git branch (default `main`) |
+
+`--copy-data` is optional. By default the installer writes absolute paths to
+your existing data, so the install directory can be moved without copying a
+large PBF or GeoPackage set. Use `--copy-data` only when you want a fully
+portable directory.
 
 The images are pulled from `${IMAGE_REPO}:<service>-${IMAGE_TAG}`, for example
 `docker.io/krakekrake/eat40005:valhalla-latest`. If they are not published yet,
@@ -134,7 +151,7 @@ The first tile build can take a while depending on the size of the extract.
 Watch it with:
 
 ```bash
-cd nhvr-compliance
+cd ~/nhvr
 docker compose logs -f valhalla
 ```
 
@@ -144,7 +161,7 @@ Put the new GeoPackages in `NHVR_GPKG_DIR` and/or replace the base `.pbf`,
 then:
 
 ```bash
-cd nhvr-compliance
+cd ~/nhvr
 ./update.sh --dry-run   # show what changed
 ./update.sh             # import, reload PostGIS, rebuild tiles
 ```
@@ -177,7 +194,8 @@ the next normal `./update.sh` completes the remaining work.
 
 ## Day-to-day commands
 
-Run these from the install directory (`cd nhvr-compliance`).
+Run these from the install directory (the directory you installed into, for
+example `~/nhvr`).
 
 ```bash
 docker compose ps                 # service health
@@ -235,7 +253,7 @@ password, change the role in the running container, or erase the volume if it
 holds no data:
 
 ```bash
-cd nhvr-compliance
+cd ~/nhvr
 docker compose down
 docker volume rm nhvr-compliance-pgdata
 ./setup.sh              # or re-run install.sh
@@ -257,12 +275,11 @@ which is what Docker Hub supports. Keep the repository fully qualified
 (`docker.io/...`) so podman does not resolve a local short name to `localhost`.
 
 **`docker compose up` says no compose file was found.**
-Run it from the install directory (`cd nhvr-compliance`) or pass the file
-explicitly:
+Run it from the install directory (`cd ~/nhvr`) or pass the file explicitly:
 
 ```bash
-docker compose -f nhvr-compliance/docker-compose.yml \
-  --env-file nhvr-compliance/.env up -d
+docker compose -f ~/nhvr/docker-compose.yml \
+  --env-file ~/nhvr/.env up -d
 ```
 
 **The first run looks stuck.**
