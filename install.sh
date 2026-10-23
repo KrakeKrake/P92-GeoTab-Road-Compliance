@@ -28,6 +28,8 @@ OSM_PBF_FILE="${OSM_PBF_FILE:-}"
 DB_PASSWORD="${DB_PASSWORD:-}"
 IMAGE_REPO="${IMAGE_REPO:-docker.io/krakekrake/eat40005}"
 IMAGE_TAG="${IMAGE_TAG:-latest}"
+PUID="${PUID:-}"
+PGID="${PGID:-}"
 WEB_PORT="${WEB_PORT:-8080}"
 
 ASSUME_YES=0
@@ -99,6 +101,23 @@ done
 _first="${IMAGE_REPO%%/*}"
 if [[ "$_first" != *.* && "$_first" != *:* && "$_first" != localhost ]]; then
   IMAGE_REPO="docker.io/$IMAGE_REPO"
+fi
+
+# Rootful Docker writes bind-mounted files as root, which makes the host-side
+# tile promotion fail. Match the invoking user there; rootless Podman needs 0:0.
+if [[ -z "$PUID" || -z "$PGID" ]]; then
+  PUID=0
+  PGID=0
+  if command -v docker >/dev/null 2>&1; then
+    _compose_out="$(docker compose version 2>&1 || true)"
+    if [[ "$_compose_out" == *"Docker Compose version"* ]]; then
+      _rootless="$(docker info --format '{{.Rootless}}' 2>/dev/null || true)"
+      if [[ "$_rootless" == "false" ]]; then
+        PUID="$(id -u)"
+        PGID="$(id -g)"
+      fi
+    fi
+  fi
 fi
 
 # ---- gather values -----------------------------------------------------------
@@ -252,8 +271,9 @@ if [[ $COPY_DATA -eq 1 ]]; then
 fi
 
 # ---- download the deployment bundle -----------------------------------------
-# Running from a checkout uses the local files; the curl path downloads them.
-if [[ -f "$PWD/docker-compose.yml" && -f "$PWD/setup.sh" && -f "$PWD/scripts/lib.sh" ]]; then
+# Only a source checkout supplies the bundle locally. An existing deployment
+# directory must download it (with --force) so it can be upgraded.
+if [[ -d "$PWD/nhvr-valhalla" && -d "$PWD/web-app" ]]; then
   SRC_DIR="$PWD"
 else
   SRC_DIR=""
@@ -309,6 +329,8 @@ if [[ ! -f "$INSTALL_DIR/.env" || $RECONFIGURE -eq 1 ]]; then
   set_env "$INSTALL_DIR/.env" DB_PASSWORD "$DB_PASSWORD"
   set_env "$INSTALL_DIR/.env" IMAGE_REPO "$IMAGE_REPO"
   set_env "$INSTALL_DIR/.env" IMAGE_TAG "$IMAGE_TAG"
+  set_env "$INSTALL_DIR/.env" PUID "$PUID"
+  set_env "$INSTALL_DIR/.env" PGID "$PGID"
   set_env "$INSTALL_DIR/.env" WEB_PORT "$WEB_PORT"
   chmod 600 "$INSTALL_DIR/.env"
   log "wrote $INSTALL_DIR/.env"

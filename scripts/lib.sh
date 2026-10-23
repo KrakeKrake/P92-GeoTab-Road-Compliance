@@ -77,8 +77,18 @@ image_present() {
 # none (only .env/directories). Deployment servers may only have custom_files.
 validate_inputs() {
   local mode="${1:-full}"
+  local _compose_out _rootless
   [[ -f "$ENV_FILE" ]] || die ".env not found. Copy .env.example to .env and edit it."
   mkdir -p "$CUSTOM_FILES" "$STATE_DIR"
+  # Rootful Docker writes bind-mounted files as root; the host-side promotion
+  # then fails with permission denied. Warn before the long tile build.
+  if [[ "${PUID:-0}" == "0" ]] && command -v docker >/dev/null 2>&1; then
+    _compose_out="$(docker compose version 2>&1 || true)"
+    if [[ "$_compose_out" == *"Docker Compose version"* ]] \
+       && [[ "$(docker info --format '{{.Rootless}}' 2>/dev/null || true)" == "false" ]]; then
+      warn "rootful Docker detected; set PUID=$(id -u) and PGID=$(id -g) in .env, then chown custom_files once, or tile promotion may fail with permission denied"
+    fi
+  fi
   case "$mode" in
     full)
       [[ -n "$OSM_PBF_NAME" ]] || die "OSM_PBF_NAME is not set in .env"

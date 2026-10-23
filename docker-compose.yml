@@ -89,6 +89,7 @@ services:
       build_transit: ${VALHALLA_BUILD_TRANSIT:-False}
       LOGGING_LEVEL: ${VALHALLA_LOG_LEVEL:-INFO}
       server_threads: ${VALHALLA_SERVER_THREADS:-}
+    user: "${PUID:-0}:${PGID:-0}"
     volumes:
       - ${VALHALLA_BUILD_DIR:-./custom_files}:/custom_files:z
     networks:
@@ -110,6 +111,7 @@ services:
       build_transit: "False"
       LOGGING_LEVEL: ${VALHALLA_LOG_LEVEL:-INFO}
       server_threads: ${VALHALLA_SERVER_THREADS:-}
+    user: "${PUID:-0}:${PGID:-0}"
     volumes:
       - ./custom_files:/custom_files:z
     healthcheck:
@@ -160,6 +162,7 @@ services:
       PGDATABASE: ${DB_NAME:-nhvr_compliance}
       PGUSER: ${DB_USER:-nhvr}
       PGPASSWORD: ${DB_PASSWORD}
+    user: "${PUID:-0}:${PGID:-0}"
     volumes:
       - ${NHVR_GPKG_DIR:-./db/nhvr_gpkg}:/data/gpkg:ro,z
       - ${OSM_PBF_DIR:-./nhvr-valhalla/run/nhvr-importer/osm.pbf}:/data/osm:ro,z

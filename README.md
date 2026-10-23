@@ -291,10 +291,38 @@ steps.
 Check `docker compose logs valhalla`. A missing `custom_files/nhvr.osm.pbf` or a
 failed tile build will leave it unhealthy; rerun `./setup.sh`.
 
-**Permission errors on `custom_files` with Docker.**
-Valhalla runs as root inside the container. With rootless Podman, files stay
-owned by your user. With rootful Docker, run `update.sh` as the same user that
-owns the directory or with `sudo`; alternatively use rootless Podman.
+**`mv: cannot move ... Permission denied` or permission errors on `custom_files`.**
+Rootful Docker writes bind-mounted files as root, so the host-side tile
+promotion cannot move them. Set the container user to your account once:
+
+```bash
+cd ~/nhvr
+sed -i '/^PUID=/d;/^PGID=/d' .env
+printf 'PUID=%s\nPGID=%s\n' "$(id -u)" "$(id -g)" >> .env
+sudo chown -R "$(id -u):$(id -g)" custom_files
+docker compose up -d --force-recreate valhalla valhalla-tiles nhvr-tools
+./setup.sh
+```
+
+If the install predates the `user:` mappings, update the bundle first by
+running the installer from outside the install directory:
+
+```bash
+cd /tmp
+curl -fsSL https://raw.githubusercontent.com/KrakeKrake/P92-GeoTab-Road-Compliance/main/install.sh \
+  | bash -s -- --dir ~/nhvr --force --no-pull
+```
+
+If the tiles were already built in `custom_files/.build` and only the promotion
+failed, you can finish without rebuilding:
+
+```bash
+cp -a custom_files/.build/. custom_files/
+docker compose up -d
+```
+
+New installs on rootful Docker set `PUID`/`PGID` automatically. Rootless
+Podman uses `0`/`0` (container root maps to your user) and needs no change.
 
 **I changed an image or `.env` and nothing happened.**
 The web app's `VITE_*` values are injected at container start, so recreate the

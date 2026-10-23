@@ -140,7 +140,12 @@ else
 fi
 
 log "starting the stack"
-compose up -d
+if ! compose up -d; then
+  # podman-compose can race while recreating a container; a retry is enough.
+  warn "compose up reported an error; retrying once"
+  sleep 2
+  compose up -d
+fi
 # Recreate the proxy now that every upstream exists, so nginx resolves the
 # current Valhalla/API container addresses.
 reload_web_app
