@@ -130,10 +130,22 @@ wait_for_postgres() {
   log "waiting for postgis"
   local i
   for i in $(seq 1 60); do
-    compose exec -T postgis pg_isready -U "${DB_USER:-nhvr}" -d "${DB_NAME:-nhvr_compliance}" -q >/dev/null 2>&1 && return 0
+    compose exec -T postgis pg_isready -U "${DB_USER:-nhvr}" -d "${DB_NAME:-nhvr_compliance}" -q >/dev/null 2>&1 && break
+    [[ "$i" -eq 60 ]] && die "postgis did not become ready (check: compose logs postgis)"
     sleep 2
   done
-  die "postgis did not become ready (check: compose logs postgis)"
+  # pg_isready does not authenticate. Check the .env credentials over TCP so a
+  # reused volume with an older password fails here with a clear message.
+  if ! compose exec -T -e PGPASSWORD="${DB_PASSWORD:-}" postgis \
+      psql -h 127.0.0.1 -U "${DB_USER:-nhvr}" -d "${DB_NAME:-nhvr_compliance}" \
+      -tAc 'SELECT 1' >/dev/null 2>&1; then
+    die "PostGIS rejected DB_USER/DB_PASSWORD from $ENV_FILE.
+The volume '${DB_VOLUME_NAME:-${COMPOSE_PROJECT_NAME:-nhvr-compliance}-pgdata}' was probably created with a different password.
+Keep the original password, or change the role inside the running container, or erase the volume if it has no data:
+  docker compose down
+  docker volume rm ${DB_VOLUME_NAME:-${COMPOSE_PROJECT_NAME:-nhvr-compliance}-pgdata}
+  ./setup.sh"
+  fi
 }
 
 wait_for_valhalla() {
