@@ -14,12 +14,10 @@ import psycopg2
 
 HERE = Path(__file__).resolve().parent
 MIGRATIONS = [
-    "create_table.sql",
-    "hvnl_seed.sql",
-    "create_goods_tables.sql",
-    "goods_seed.sql",
+    "combined_create_tables.sql",
+    "combined_seed.sql",
 ]
-CORE = {"create_table.sql", "hvnl_seed.sql"}
+CORE = {"combined_create_tables.sql", "combined_seed.sql"}
 
 
 def connect():
