@@ -316,8 +316,19 @@ public:
                uint16_t disallow_mask = kDisallowNone) const override {
     bool allow_closures = (!filter_closures_ && !(disallow_mask & kDisallowClosure)) ||
                           !(flow_mask_ & kCurrentFlowMask);
-    return DynamicCost::Allowed(edge, tile, disallow_mask) && !edge->bss_connection() &&
-           (allow_closures || !tile->IsClosed(edge));
+    if (!(DynamicCost::Allowed(edge, tile, disallow_mask) && !edge->bss_connection() &&
+          (allow_closures || !tile->IsClosed(edge)))) {
+      return false;
+    }
+    if (!nhvr_networks_.empty()) {
+      auto edgeinfo = tile->edgeinfo(edge);
+      for (const auto& entry : edgeinfo.nhvr_networks()) {
+        if (entry.status == NHVRNetworkEntry::kProhibited && nhvr_networks_.count(entry.name)) {
+          return false;
+        }
+      }
+    }
+    return true;
   }
 
 public:

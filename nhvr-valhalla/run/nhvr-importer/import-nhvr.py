@@ -69,7 +69,7 @@ def read_gpkgs(nhvr_dir):
             # If there *was* a previous status, and it's not the same as the current status,
             # then we should use the more restrictive status.
             if prev_status is not None and prev_status != status:
-                print(f"Way {way_id} has different status for {name} ({prev_status} vs {status})")
+                #print(f"Way {way_id} has different status for {name} ({prev_status} vs {status})")
                 if prev_status < status: # So the more restrictive status is used
                     # I dont think nhvr has any duplicates, better safe than sorry.
                     way_networks[name] = status
@@ -146,7 +146,6 @@ def main():
 
     output = args.output or args.input + ".nhvr.osm.pbf"
     networks = read_gpkgs(args.nhvr_dir) # Read the NHVR data into memory
-    print(networks) #Debug
     if not networks:
         sys.exit("no NHVR way matches found, aborting")
 

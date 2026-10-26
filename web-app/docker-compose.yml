@@ -1,3 +1,4 @@
+# Legacy standalone stack. Use the repository root docker-compose.yml instead.
 services:
   valhalla-app:
     build:

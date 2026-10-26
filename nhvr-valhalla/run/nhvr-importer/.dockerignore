@@ -1,0 +1,8 @@
+venv/
+nhvr/
+osm.pbf/
+*.pbf
+import.log
+.idea/
+__pycache__/
+*.pyc

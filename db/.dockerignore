@@ -1,14 +1,20 @@
 .env
 .env.*
-!.env.example
+**/.env
+**/.env.*
+!**/.env.example
 
 __pycache__/
+**/__pycache__/
 *.pyc
 .venv/
 venv/
 
 .git/
+.idea/
 .vscode/
 
 tests/
 *.db
+nhvr_gpkg/
+valhalla_custom_files/

@@ -1,7 +1,11 @@
 import type { NominationResponse } from '@/components/types';
+import { getAppConfig } from './runtime-config';
 
-export const NOMINATIM_URL = `${import.meta.env.VITE_NOMINATIM_URL}/search`;
-export const NOMINATIME_URL_REVERSE = `${import.meta.env.VITE_NOMINATIM_URL}/reverse`;
+const NOMINATIM_BASE =
+  getAppConfig().VITE_NOMINATIM_URL || 'https://nominatim.openstreetmap.org';
+
+export const NOMINATIM_URL = `${NOMINATIM_BASE}/search`;
+export const NOMINATIME_URL_REVERSE = `${NOMINATIM_BASE}/reverse`;
 
 export const forward_geocode = async (userInput: string) => {
   const params = new URLSearchParams({

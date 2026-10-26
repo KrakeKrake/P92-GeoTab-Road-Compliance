@@ -1,41 +1,33 @@
-DROP TABLE IF EXISTS account.users CASCADE;
-DROP TABLE IF EXISTS compliance.input_sanity_ranges CASCADE;
-DROP TABLE IF EXISTS compliance.dimension_rules CASCADE;
-DROP TABLE IF EXISTS compliance.axle_config_mass_limits CASCADE;
-DROP TABLE IF EXISTS compliance.axle_group_masses CASCADE;
-DROP TABLE IF EXISTS compliance.axle_configurations CASCADE;
-DROP TABLE IF EXISTS compliance.template_questions CASCADE;
-DROP TABLE IF EXISTS compliance.vehicle_profiles CASCADE;
-DROP TABLE IF EXISTS compliance.mass_schemes CASCADE;
-DROP TABLE IF EXISTS compliance.vehicle_templates CASCADE;
-DROP TABLE IF EXISTS compliance.vehicle_categories CASCADE;
-DROP TABLE IF EXISTS compliance.licence_classes CASCADE;
+-- Idempotent baseline. Destructive resets live in:
+--   python -m compliance.migrate --reset
+CREATE SCHEMA IF NOT EXISTS compliance;
+CREATE SCHEMA IF NOT EXISTS account;
 
 
-CREATE TABLE compliance.licence_classes (
+CREATE TABLE IF NOT EXISTS compliance.licence_classes (
     licence_class_id TEXT PRIMARY KEY,
     display_name TEXT NOT NULL,
     rank_value INTEGER NOT NULL UNIQUE
 );
 
-CREATE TABLE compliance.vehicle_categories (
+CREATE TABLE IF NOT EXISTS compliance.vehicle_categories (
     category_id TEXT PRIMARY KEY,
     category_name TEXT NOT NULL
 );
 
-CREATE TABLE compliance.vehicle_templates (
+CREATE TABLE IF NOT EXISTS compliance.vehicle_templates (
     template_id TEXT PRIMARY KEY,
     template_name TEXT NOT NULL,
     base_type TEXT NOT NULL
 );
 
-CREATE TABLE compliance.mass_schemes (
+CREATE TABLE IF NOT EXISTS compliance.mass_schemes (
     mass_scheme_id TEXT PRIMARY KEY,
     display_name TEXT NOT NULL,
     description TEXT
 );
 
-CREATE TABLE compliance.vehicle_profiles (
+CREATE TABLE IF NOT EXISTS compliance.vehicle_profiles (
     profile_id TEXT PRIMARY KEY,
     display_name TEXT NOT NULL,
 
@@ -67,7 +59,7 @@ CREATE TABLE compliance.vehicle_profiles (
         REFERENCES compliance.licence_classes(licence_class_id)
 );
 
-CREATE TABLE compliance.template_questions (
+CREATE TABLE IF NOT EXISTS compliance.template_questions (
     question_id SERIAL PRIMARY KEY,
     template_id TEXT NOT NULL,
 
@@ -80,7 +72,7 @@ CREATE TABLE compliance.template_questions (
         REFERENCES compliance.vehicle_templates(template_id)
 );
 
-CREATE TABLE compliance.axle_configurations (
+CREATE TABLE IF NOT EXISTS compliance.axle_configurations (
     axle_config_id TEXT PRIMARY KEY,
     template_id TEXT NOT NULL,
 
@@ -94,7 +86,7 @@ CREATE TABLE compliance.axle_configurations (
         REFERENCES compliance.vehicle_templates(template_id)
 );
 
-CREATE TABLE compliance.axle_group_masses (
+CREATE TABLE IF NOT EXISTS compliance.axle_group_masses (
     axle_group_mass_id SERIAL PRIMARY KEY,
 
     axle_config_id TEXT NOT NULL,
@@ -107,7 +99,7 @@ CREATE TABLE compliance.axle_group_masses (
     UNIQUE (axle_config_id, group_order)
 );
 
-CREATE TABLE compliance.axle_config_mass_limits (
+CREATE TABLE IF NOT EXISTS compliance.axle_config_mass_limits (
     mass_limit_id SERIAL PRIMARY KEY,
 
     axle_config_id TEXT NOT NULL,
@@ -123,7 +115,7 @@ CREATE TABLE compliance.axle_config_mass_limits (
     UNIQUE (axle_config_id, mass_scheme_id)
 );
 
-CREATE TABLE compliance.dimension_rules (
+CREATE TABLE IF NOT EXISTS compliance.dimension_rules (
     dimension_rule_id SERIAL PRIMARY KEY,
 
     template_id TEXT NOT NULL,
@@ -140,7 +132,7 @@ CREATE TABLE compliance.dimension_rules (
         REFERENCES compliance.vehicle_templates(template_id)
 );
 
-CREATE TABLE compliance.input_sanity_ranges (
+CREATE TABLE IF NOT EXISTS compliance.input_sanity_ranges (
     range_id SERIAL PRIMARY KEY,
 
     template_id TEXT NOT NULL,
@@ -158,7 +150,7 @@ CREATE TABLE compliance.input_sanity_ranges (
         REFERENCES compliance.vehicle_templates(template_id)
 );
 
-CREATE TABLE account.users (
+CREATE TABLE IF NOT EXISTS account.users (
     user_id SERIAL PRIMARY KEY,
 
     email TEXT NOT NULL UNIQUE,
