@@ -7,10 +7,16 @@ interface User {
   username: string;
   licence_class_id?: string | null;
   favourite_profile_id?: string | null;
+  favourite_axle_config_id?: string | null;
 }
 
 interface VehicleProfile {
   profile_id: string;
+  display_name: string;
+}
+
+interface AxleConfiguration {
+  config_id: string;
   display_name: string;
 }
 
@@ -36,6 +42,13 @@ const ProfilePage = () => {
   const [licenceClass, setLicenceClass] = useState('');
   const [favouriteProfileId, setFavouriteProfileId] =
     useState('');
+  const [favouriteAxleConfigId, setFavouriteAxleConfigId] =
+  useState('');
+
+  const [axleConfigs, setAxleConfigs] =
+    useState<AxleConfiguration[]>([]);
+
+  const [axlesLoading, setAxlesLoading] = useState(false);
 
   const [profiles, setProfiles] = useState<
     VehicleProfile[]
@@ -61,6 +74,10 @@ const ProfilePage = () => {
 
     setFavouriteProfileId(
       user.favourite_profile_id ?? ''
+    );
+
+    setFavouriteAxleConfigId(
+      user.favourite_axle_config_id ?? ''
     );
   }, [user]);
 
@@ -134,6 +151,61 @@ const ProfilePage = () => {
     loadProfiles();
   }, [licenceClass]);
 
+
+  useEffect(() => {
+  let cancelled = false;
+
+  async function loadAxleConfigs() {
+    setAxleConfigs([]);
+
+    if (!favouriteProfileId) {
+      setFavouriteAxleConfigId('');
+      return;
+    }
+
+    setAxlesLoading(true);
+
+    try {
+      const response = await fetch(
+        `/api/compliance/vehicle-form-data/${encodeURIComponent(favouriteProfileId)}`
+      );
+
+      if (!response.ok) {
+        throw new Error('Failed to load axle configurations.');
+      }
+
+      const data = await response.json();
+
+      if (cancelled) return;
+
+      const loadedAxles: AxleConfiguration[] =
+        data.axle_configurations ?? [];
+
+      setAxleConfigs(loadedAxles);
+
+      setFavouriteAxleConfigId((current) =>
+        loadedAxles.some((axle) => axle.config_id === current)
+          ? current
+          : ''
+      );
+    } catch (error) {
+      if (!cancelled) {
+        setError('Failed to load axle configurations.');
+      }
+    } finally {
+      if (!cancelled) {
+        setAxlesLoading(false);
+      }
+    }
+  }
+
+  loadAxleConfigs();
+
+  return () => {
+    cancelled = true;
+  };
+}, [favouriteProfileId]);
+
   /*
    * Save profile to Flask.
    */
@@ -169,6 +241,8 @@ const ProfilePage = () => {
             licence_class_id: licenceClass,
             favourite_profile_id:
               favouriteProfileId || null,
+            favourite_axle_config_id:
+              favouriteAxleConfigId || null,
           }),
         }
       );
@@ -195,6 +269,8 @@ const ProfilePage = () => {
             licence_class_id: licenceClass,
             favourite_profile_id:
               favouriteProfileId || null,
+            favourite_axle_config_id:
+              favouriteAxleConfigId || null,
           };
 
       localStorage.setItem(
@@ -411,6 +487,8 @@ const ProfilePage = () => {
                 setFavouriteProfileId(
                   event.target.value
                 );
+                setFavouriteAxleConfigId('');
+                setAxleConfigs([]);
 
                 setMessage('');
                 setError('');
@@ -440,6 +518,48 @@ const ProfilePage = () => {
             <p className="text-xs text-muted-foreground">
               Only vehicles permitted by the selected
               licence are shown.
+            </p>
+          </div>
+
+          {/* Favourite Axle Configuration */}
+          <div className="flex flex-col gap-2">
+            <label
+              htmlFor="favourite-axle"
+              className="text-sm font-medium"
+            >
+              Axle Configuration
+            </label>
+
+            <select
+              id="favourite-axle"
+              value={favouriteAxleConfigId}
+              onChange={(event) => {
+                setFavouriteAxleConfigId(event.target.value);
+                setMessage('');
+                setError('');
+              }}
+              disabled={!favouriteProfileId || axlesLoading}
+              className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm outline-none disabled:cursor-not-allowed disabled:opacity-50 focus:ring-2 focus:ring-ring"
+            >
+              <option value="">
+                {axlesLoading
+                  ? 'Loading axle configurations...'
+                  : '— No preferred axle configuration —'}
+              </option>
+
+              {axleConfigs.map((axle) => (
+                <option
+                  key={axle.config_id}
+                  value={axle.config_id}
+                >
+                  {axle.display_name}
+                </option>
+              ))}
+            </select>
+
+            <p className="text-xs text-muted-foreground">
+              Only axle configurations available for your
+              favourite vehicle are shown.
             </p>
           </div>
 

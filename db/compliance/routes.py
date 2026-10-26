@@ -37,6 +37,7 @@ def serialize_user(user):
         "username": user.username,
         "licence_class_id": user.licence_class_id,
         "favourite_profile_id": user.favourite_profile_id,
+        "favourite_axle_config_id": user.favourite_axle_config_id,
     }
 
 
@@ -184,7 +185,7 @@ def update_user_profile(user_id):
 
     licence_class_id = data.get("licence_class_id")
     favourite_profile_id = data.get("favourite_profile_id")
-
+    favourite_axle_config_id = data.get("favourite_axle_config_id")
     if not licence_class_id:
         return jsonify({"detail": "licence_class_id is required."}), 400
 
@@ -229,9 +230,42 @@ def update_user_profile(user_id):
                     "detail": "Selected favourite vehicle is not allowed for this licence class."
                 }), 400
 
+            if favourite_axle_config_id:
+                if not favourite_profile_id:
+                    return jsonify({
+                        "detail": "Select a favourite vehicle first."
+                    }), 400
+
+                axle = (
+                    db.query(AxleConfiguration)
+                    .filter(
+                        AxleConfiguration.axle_config_id ==
+                        favourite_axle_config_id
+                    )
+                    .first()
+                )
+
+                profile = (
+                    db.query(VehicleProfile)
+                    .filter(
+                        VehicleProfile.profile_id ==
+                        favourite_profile_id
+                    )
+                    .first()
+                )
+
+                if (
+                    not axle
+                    or not profile
+                    or axle.template_id != profile.template_id
+                ):
+                    return jsonify({
+                        "detail": "Invalid axle configuration for the selected vehicle."
+                    }), 400
+
         user.licence_class_id = licence_class_id
         user.favourite_profile_id = favourite_profile_id or None
-
+        user.favourite_axle_config_id = favourite_axle_config_id or None
         db.commit()
         db.refresh(user)
 
