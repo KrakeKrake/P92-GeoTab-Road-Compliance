@@ -105,21 +105,17 @@ if [[ "$_first" != *.* && "$_first" != *:* && "$_first" != localhost ]]; then
 fi
 
 # Rootful Docker writes bind-mounted files as root, which makes the host-side
-# tile promotion fail. Match the invoking user there; rootless Podman needs 0:0.
-if [[ -z "$PUID" || -z "$PGID" ]]; then
+# tile promotion fail. Match the invoking user there; rootless Podman/Docker
+# needs 0:0 (container root already maps to your user).
+if docker_rootful; then
+  DOCKER_ROOTFUL=1
+fi
+if [[ $DOCKER_ROOTFUL -eq 1 ]]; then
+  PUID="$(id -u)"
+  PGID="$(id -g)"
+elif [[ -z "$PUID" || -z "$PGID" ]]; then
   PUID=0
   PGID=0
-  if command -v docker >/dev/null 2>&1; then
-    _compose_out="$(docker compose version 2>&1 || true)"
-    if [[ "$_compose_out" == *"Docker Compose version"* ]]; then
-      _rootless="$(docker info --format '{{.Rootless}}' 2>/dev/null || true)"
-      if [[ "$_rootless" == "false" ]]; then
-        DOCKER_ROOTFUL=1
-        PUID="$(id -u)"
-        PGID="$(id -g)"
-      fi
-    fi
-  fi
 fi
 
 # ---- gather values -----------------------------------------------------------
@@ -144,6 +140,27 @@ docker_cli() {
   elif command -v podman >/dev/null 2>&1; then
     printf '%s' podman
   fi
+}
+
+# True when the active engine is a rootful Docker (or rootful Podman socket),
+# where container root writes host files as uid 0. `docker info` is the
+# canonical answer; the socket owner is the fallback for runtimes that do not
+# expose .Rootless.
+docker_rootful() {
+  command -v docker >/dev/null 2>&1 || return 1
+  local rootless endpoint socket
+  rootless="$(docker info --format '{{.Rootless}}' 2>/dev/null || true)"
+  case "$rootless" in
+    true) return 1 ;;
+    false) return 0 ;;
+  esac
+  endpoint="$(docker context inspect --format '{{.Endpoints.docker.Host}}' 2>/dev/null || true)"
+  [[ "$endpoint" == *"/run/user/"* ]] && return 1
+  socket="${endpoint#unix://}"
+  [[ -z "$socket" || "$socket" == "$endpoint" ]] && socket="/var/run/docker.sock"
+  [[ -S "$socket" ]] || return 1
+  [[ "$(stat -c %u "$socket" 2>/dev/null || echo 0)" == "$(id -u)" ]] && return 1
+  return 0
 }
 
 volume_exists() {

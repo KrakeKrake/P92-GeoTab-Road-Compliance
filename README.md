@@ -366,9 +366,12 @@ failed tile build will leave it unhealthy; rerun `./setup.sh`.
 
 **`custom_files` is not writable` / `mv: cannot move ... Permission denied`.**
 Rootful Docker writes bind-mounted files as root, so the host-side tile
-promotion cannot move them. `setup.sh` and `update.sh` now stop before the long
-build if `custom_files` or `.state` is not writable and print the exact `chown`
-command:
+promotion cannot move them. A directory rename also needs write permission on
+the directory being moved (it updates its `..` entry), so a root-owned
+`valhalla_tiles` cannot be renamed even when `.build` and `custom_files` belong
+to you. Check `grep -E '^(PUID|PGID)=' .env` first: on rootful Docker it must be
+your uid/gid, not `0`. `setup.sh` and `update.sh` stop before the long build if
+`custom_files` or `.state` is not writable and print the exact `chown` command:
 
 ```bash
 sudo chown -R "$(id -u):$(id -g)" custom_files .state

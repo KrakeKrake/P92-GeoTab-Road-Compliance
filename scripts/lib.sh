@@ -106,6 +106,27 @@ image_present() {
 }
 
 # ---- filesystem --------------------------------------------------------------
+# True when the active engine is a rootful Docker (or rootful Podman socket),
+# where container root writes host files as uid 0. `docker info` is the
+# canonical answer; the socket owner is the fallback for runtimes that do not
+# expose .Rootless.
+docker_rootful() {
+  command -v docker >/dev/null 2>&1 || return 1
+  local rootless endpoint socket
+  rootless="$(docker info --format '{{.Rootless}}' 2>/dev/null || true)"
+  case "$rootless" in
+    true) return 1 ;;
+    false) return 0 ;;
+  esac
+  endpoint="$(docker context inspect --format '{{.Endpoints.docker.Host}}' 2>/dev/null || true)"
+  [[ "$endpoint" == *"/run/user/"* ]] && return 1
+  socket="${endpoint#unix://}"
+  [[ -z "$socket" || "$socket" == "$endpoint" ]] && socket="/var/run/docker.sock"
+  [[ -S "$socket" ]] || return 1
+  [[ "$(stat -c %u "$socket" 2>/dev/null || echo 0)" == "$(id -u)" ]] && return 1
+  return 0
+}
+
 # Containers can leave root-owned files behind in custom_files (a previous
 # rootful run, or docker creating the bind-mount target). Fail early with the
 # chown command instead of a bare "Permission denied" halfway through setup.
@@ -130,15 +151,12 @@ validate_inputs() {
   require_writable_dir "$STATE_DIR" "the update-state directory"
   # Rootful Docker writes bind-mounted files as root; the host-side promotion
   # then fails with permission denied. Warn before the long tile build.
-  if command -v docker >/dev/null 2>&1; then
-    _compose_out="$(docker compose version 2>&1 || true)"
-    if [[ "$_compose_out" == *"Docker Compose version"* ]] \
-       && [[ "$(docker info --format '{{.Rootless}}' 2>/dev/null || true)" == "false" ]]; then
-      if [[ "${PUID:-0}" == "0" ]]; then
-        warn "rootful Docker detected but PUID is 0; containers will write into custom_files as root. Set PUID=$(id -u) and PGID=$(id -g) in .env, then chown custom_files once."
-      elif [[ "${PUID:-0}" != "$(id -u)" || "${PGID:-0}" != "$(id -g)" ]]; then
-        warn "rootful Docker: containers run as ${PUID:-0}:${PGID:-0}, but this shell is uid $(id -u), gid $(id -g). The host-side tile promotion will fail unless they match; update PUID/PGID in .env."
-      fi
+  if command -v docker >/dev/null 2>&1 \
+     && [[ "$(docker info --format '{{.Rootless}}' 2>/dev/null || true)" == "false" ]]; then
+    if [[ "${PUID:-0}" == "0" || "${PGID:-0}" == "0" ]]; then
+      warn "rootful Docker detected but PUID/PGID are 0; containers will write into custom_files as root, and the tile promotion will fail. Set PUID=$(id -u) and PGID=$(id -g) in .env, then run: sudo chown -R $(id -u):$(id -g) custom_files"
+    elif [[ "${PUID:-0}" != "$(id -u)" || "${PGID:-0}" != "$(id -g)" ]]; then
+      warn "rootful Docker: containers run as ${PUID:-0}:${PGID:-0}, but this shell is uid $(id -u), gid $(id -g). The host-side tile promotion will fail unless they match; update PUID/PGID in .env."
     fi
   fi
   case "$mode" in
@@ -315,10 +333,46 @@ reload_web_app() {
   compose up -d --no-deps --force-recreate web-app >/dev/null 2>&1 || true
 }
 
+# The build/promotion swap is host-side. If either directory is not owned by
+# the invoking user (rootful container output, a previous sudo run, or a
+# userns-remapped daemon) `mv` fails with a bare "Permission denied".
+require_host_control() {
+  local dir="$1" uid owner mode
+  uid="$(id -u)"
+  owner="$(stat -c %u "$dir" 2>/dev/null || echo unknown)"
+  mode="$(stat -c %a "$dir" 2>/dev/null || echo unknown)"
+  if [[ ! -w "$dir" || ! -x "$dir" ]]; then
+    die "$dir is not writable by $(id -un) (uid $uid): owner uid=$owner mode=$mode
+Fix it with:
+  sudo chown -R $uid:$(id -g) \"$CUSTOM_FILES\""
+  fi
+}
+
+move_tiles() {
+  local src="$1" dst="$2" uid owner
+  uid="$(id -u)"
+  if [[ -d "$src" && ! -w "$src" ]]; then
+    owner="$(stat -c %u "$src" 2>/dev/null || echo unknown)"
+    die "cannot move directory $src: it was created by uid $owner and is not writable by uid $uid.
+Renaming a directory updates its '..' entry, so the directory itself must be writable.
+Run: sudo chown -R $uid:$(id -g) \"$CUSTOM_FILES\"
+then re-run ./update.sh --tiles-only (or use the manual copy shown in the README)."
+  fi
+  if ! mv -f "$src" "$dst"; then
+    owner="$(stat -c %u "$src" 2>/dev/null || echo unknown)"
+    die "could not move $src to $dst (uid $uid, source owner uid=$owner)
+The host-side tile swap needs write permission on $CUSTOM_FILES and $BUILD_DIR.
+Run: sudo chown -R $uid:$(id -g) \"$CUSTOM_FILES\"
+then re-run ./update.sh --tiles-only (or use the manual copy shown in the README)."
+  fi
+}
+
 rollback_build() {
   valhalla_is_local \
     || die "VALHALLA_UPSTREAM is external (${VALHALLA_UPSTREAM}); there are no local tiles to roll back"
   [[ -d "$OLD_DIR" ]] || die "no .old directory to roll back to"
+  require_host_control "$CUSTOM_FILES"
+  require_host_control "$OLD_DIR"
   log "rolling back tiles"
   compose stop valhalla >/dev/null 2>&1 || true
   rm -rf "$FAILED_DIR"
@@ -327,8 +381,9 @@ rollback_build() {
   for item in "${TILE_ITEMS[@]}"; do
     # Only replace items that were actually backed up; anything else is new.
     if [[ -e "$OLD_DIR/$item" ]]; then
-      [[ -e "$CUSTOM_FILES/$item" ]] && mv -f "$CUSTOM_FILES/$item" "$FAILED_DIR/$item"
-      mv -f "$OLD_DIR/$item" "$CUSTOM_FILES/$item"
+      [[ -e "$CUSTOM_FILES/$item" ]] \
+        && move_tiles "$CUSTOM_FILES/$item" "$FAILED_DIR/$item"
+      move_tiles "$OLD_DIR/$item" "$CUSTOM_FILES/$item"
     fi
   done
   compose up -d --no-deps valhalla
@@ -342,6 +397,18 @@ rollback_build() {
 promote_build() {
   local keep_old="$1"
   log "promoting new tiles"
+  require_host_control "$CUSTOM_FILES"
+  require_host_control "$BUILD_DIR"
+  if [[ -e "$BUILD_DIR/valhalla_tiles" ]]; then
+    local built_owner
+    built_owner="$(stat -c %u "$BUILD_DIR/valhalla_tiles" 2>/dev/null || echo unknown)"
+    if [[ "$built_owner" != "$(id -u)" ]]; then
+      warn "tiles were built as uid $built_owner, not $(id -u); run sudo chown -R $(id -u):$(id -g) \"$CUSTOM_FILES\" after promotion"
+      if [[ ! -w "$BUILD_DIR/valhalla_tiles" ]]; then
+        die "the built tile directory is not writable by $(id -un) (uid $(id -u)), so it cannot be renamed into place. This usually means the containers ran as root (PUID=0 in .env). Run: sudo chown -R $(id -u):$(id -g) \"$CUSTOM_FILES\" and set PUID=$(id -u) / PGID=$(id -g) in .env."
+      fi
+    fi
+  fi
   rm -rf "$OLD_DIR"
   mkdir -p "$OLD_DIR"
   compose stop valhalla >/dev/null 2>&1 || true
@@ -349,8 +416,9 @@ promote_build() {
   for item in "${TILE_ITEMS[@]}"; do
     # Move a live item aside only when the build produced a replacement.
     if [[ -e "$BUILD_DIR/$item" ]]; then
-      [[ -e "$CUSTOM_FILES/$item" ]] && mv -f "$CUSTOM_FILES/$item" "$OLD_DIR/$item"
-      mv -f "$BUILD_DIR/$item" "$CUSTOM_FILES/$item"
+      [[ -e "$CUSTOM_FILES/$item" ]] \
+        && move_tiles "$CUSTOM_FILES/$item" "$OLD_DIR/$item"
+      move_tiles "$BUILD_DIR/$item" "$CUSTOM_FILES/$item"
     fi
   done
   compose up -d --no-deps valhalla
