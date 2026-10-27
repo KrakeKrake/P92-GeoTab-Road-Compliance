@@ -26,7 +26,11 @@ import {
 } from '@/components/ui/tooltip';
 import { useCommonStore } from '@/stores/common-store';
 import { MultiSelectSetting } from '@/components/ui/multiselect-setting';
-import { NHVR_NETWORK_OPTIONS } from '@/components/settings-panel/settings-options';
+import {
+  EMPTY_NETWORKS,
+  useNhvrNetworksQuery,
+} from '@/hooks/use-nhvr-networks-query';
+import { NHVR_NETWORK_LABELS } from '@/utils/nhvr-network-labels';
 import { useComplianceStore } from '@/stores/compliance-store';
 const VEHICLE_TO_NHVR_NETWORK: Record<string, string> = {
   B_DOUBLE: 'B_DOUBLE',
@@ -41,9 +45,6 @@ const COMPLIANCE_TO_NHVR_NETWORK: Record<string, string> = {
   EMERGENCY_DROUGHT_NETWORK: '28361546',
 };
 
-const NHVR_NETWORK_LABELS: Record<string, string> = {
-  '28361546': 'Emergency Drought Network',
-};
 export const DirectionsControl = () => {
   const waypoints = useDirectionsStore((state) => state.waypoints);
   const results = useDirectionsStore((state) => state.results);
@@ -72,6 +73,7 @@ export const DirectionsControl = () => {
   const appliedVehicle = useComplianceStore(
     (state) => state.appliedVehicle
   );
+  const { data: nhvrNetworkOptions = EMPTY_NETWORKS } = useNhvrNetworksQuery();
   const lastAppliedNetwork = useRef<string | null>(null);
 useEffect(() => {
   if (profile !== 'truck') return;
@@ -90,7 +92,9 @@ useEffect(() => {
 
   const networkName = overrideNetwork ?? baseNetwork;
 
-  if (!networkName) return;
+  // Recommendations only make sense if the server actually has that network.
+  // The list is loaded asynchronously, so this effect re-runs when it arrives.
+  if (!networkName || !nhvrNetworkOptions.includes(networkName)) return;
 
   // Do not repeatedly apply the same recommendation
   if (lastAppliedNetwork.current === networkName) {
@@ -108,6 +112,24 @@ useEffect(() => {
   routingPreset?.networkOverrideKey,
   appliedVehicle?.templateId,
   profile,
+  nhvrNetworkOptions,
+  updateSettings,
+  refetchDirections,
+]);
+
+// Drop selections that are no longer present in the server's network table,
+// e.g. after a data update removed or renamed a network.
+useEffect(() => {
+  if (nhvrNetworkOptions.length === 0) return;
+  const selected = settings.nhvr_networks;
+  const valid = selected.filter((name) => nhvrNetworkOptions.includes(name));
+  if (valid.length !== selected.length) {
+    updateSettings('nhvr_networks', valid);
+    refetchDirections();
+  }
+}, [
+  nhvrNetworkOptions,
+  settings.nhvr_networks,
   updateSettings,
   refetchDirections,
 ]);
@@ -209,7 +231,7 @@ useEffect(() => {
             label="NHVR Networks"
             description="The NHVR network to use for routing"
             value={settings.nhvr_networks}
-            options={NHVR_NETWORK_OPTIONS}
+            options={nhvrNetworkOptions}
             optionLabels={NHVR_NETWORK_LABELS}
             onValueChange={(value) => {
               updateSettings('nhvr_networks', value);

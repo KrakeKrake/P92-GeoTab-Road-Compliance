@@ -300,25 +300,13 @@ const speedTypes = {
   options: ['current', 'predicted', 'freeflow', 'constrained'],
 };
 
-export const NHVR_NETWORK_OPTIONS: string[] = [
-  'PBS_LVL1',
-  'Vic 44t EV Pre-approved',
-  'VIC - HPLV 36.5m Tri-Dolly A-Double',
-  'CONTROLLED_ACCESS_BUS',
-  'DELWP_NON_EMERGENCY_4M',
-  'GHMS_B_DOUBLE',
-  'B_DOUBLE',
-  'GHMS_SEMI_TRAILERS',
-  'Vic Road Train Hay & Grain Pre-Approved (Ref 2)',
-  '28361546',
-  'Vic Road Train Gazetted (Ref 1)',
-];
-
 const nhvrNetworks = {
   name: 'NHVR Networks',
   param: 'nhvr_networks',
   description: 'The NHVR network to use for routing',
-  options: NHVR_NETWORK_OPTIONS,
+  // Filled at runtime by useNhvrNetworksQuery(); the API reports the networks
+  // that are actually loaded in PostGIS, and the panels substitute that list.
+  options: [] as string[],
 };
 
 const transitStartEndMaxDistance = {

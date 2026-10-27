@@ -78,6 +78,8 @@ DROP TABLE IF EXISTS nhvr_access.nhvr_network_access_staging;
 
 CREATE INDEX IF NOT EXISTS nhvr_network_access_way_id_idx
   ON nhvr_access.nhvr_network_access (osm_way_id);
+-- Supports both /api/nhvr-access/query (network filter) and /networks
+-- (the DISTINCT list the frontend uses for its network picker).
 CREATE INDEX IF NOT EXISTS nhvr_network_access_network_idx
   ON nhvr_access.nhvr_network_access (network_name);
 ANALYZE nhvr_access.nhvr_network_access;
