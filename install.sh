@@ -3,9 +3,33 @@
 #
 #   curl -fsSL https://raw.githubusercontent.com/KrakeKrake/P92-GeoTab-Road-Compliance/main/install.sh | bash
 #
-# It downloads only the small deployment bundle (compose file + scripts), pulls
-# the prebuilt images, asks where your data lives, and runs setup.sh. The source
-# tree and build contexts are not needed on the target machine.
+# What it does, in order:
+#   1. picks the install directory (default: the current directory) and refuses
+#      to write into the source checkout;
+#   2. downloads the small deployment bundle (Compose file, setup/update scripts,
+#      .env template) from this repository. It does not clone the source tree.
+#      When run from a checkout it copies those files from the checkout instead;
+#   3. reads data paths, a database password, the image repository and the web
+#      port. An existing .env is reused, and missing keys are added without
+#      overwriting anything (see "Upgrading an existing install" below);
+#   4. pulls the prebuilt images (unless --no-pull) and runs ./setup.sh, which
+#      imports the data and builds the Valhalla tiles.
+#
+# The NHVR GeoPackages and OSM PBF are read from this machine; they are never
+# uploaded. The images come from ${IMAGE_REPO}:<service>-${IMAGE_TAG}.
+#
+# Upgrading an existing install:
+#   Re-running with an .env present reuses it and backfills keys added by newer
+#   versions (PUID/PGID, DB_HOST/DB_PORT/DB_SSLMODE, VALHALLA_UPSTREAM,
+#   API_UPSTREAM, COMPOSE_PROFILES). Existing values are never replaced, except
+#   that a 0:0 PUID/PGID pair is corrected on rootful Docker.
+#   An existing deployment bundle is only overwritten with --force.
+#   Use --prepare-only to stop before setup.sh, --reconfigure to rebuild .env,
+#   and --reset-db to delete the Postgres volume first (destroys data).
+#
+# Container user: on rootful Docker the installer sets PUID/PGID to the invoking
+# user, so files written into custom_files are not root-owned. Rootless Podman
+# and rootless Docker keep 0:0, where container root already maps to your user.
 #
 # Non-interactive:
 #   curl -fsSL .../install.sh | bash -s -- --yes \
@@ -362,8 +386,10 @@ if [[ $COPY_DATA -eq 1 ]]; then
 fi
 
 # ---- download the deployment bundle -----------------------------------------
-# Only a source checkout supplies the bundle locally. An existing deployment
-# directory must download it (with --force) so it can be upgraded.
+# A source checkout supplies the bundle locally. An existing deployment
+# directory must download it (with --force) so it can be upgraded. Only these
+# small files are fetched; the images come from the registry and the data stays
+# where the user pointed NHVR_GPKG_DIR / OSM_PBF_DIR.
 if [[ -d "$PWD/nhvr-valhalla" && -d "$PWD/web-app" ]]; then
   SRC_DIR="$PWD"
 else
@@ -398,6 +424,8 @@ done
 chmod +x "$INSTALL_DIR/setup.sh" "$INSTALL_DIR/update.sh" "$INSTALL_DIR/compose.sh" "$INSTALL_DIR/scripts/lib.sh"
 
 # ---- write .env --------------------------------------------------------------
+# A fresh .env is the template with the gathered values substituted. An
+# existing .env is left alone here (missing keys were backfilled above).
 if [[ ! -f "$INSTALL_DIR/.env" || $RECONFIGURE -eq 1 ]]; then
   [[ -f "$INSTALL_DIR/.env" ]] && cp -f "$INSTALL_DIR/.env" "$INSTALL_DIR/.env.bak"
   cp -f "$INSTALL_DIR/.env.example" "$INSTALL_DIR/.env"
@@ -442,6 +470,7 @@ if [[ $PREPARE_ONLY -eq 1 ]]; then
 fi
 
 cd "$INSTALL_DIR"
+# setup.sh does the data work: pull/build images, migrate, import, build tiles.
 if [[ $NO_PULL -eq 1 ]]; then
   log "running setup (using local images)"
   ./setup.sh --no-build

@@ -1,9 +1,35 @@
 #!/usr/bin/env bash
-# Refreshes the NHVR data (PBF + PostGIS) and Valhalla tiles.
+# Refreshes the NHVR data and Valhalla tiles after the inputs change.
 #
-# Valhalla has no incremental tile update, so any data change means a full tile
-# rebuild. The default path builds into custom_files/.build and swaps it in
-# after a successful build (blue/green); --simple rebuilds in place instead.
+# How it decides what to do:
+#   - fingerprints of the base OSM PBF and the *.gpkg files (size + mtime) are
+#     compared with .state/data. If both match, nothing is rebuilt; --force
+#     overrides that check.
+#   - --db-only reloads only PostGIS; --tiles-only rebuilds only the tiles from
+#     the existing custom_files/nhvr.osm.pbf. Neither advances .state, so a
+#     later normal ./update.sh still performs the remaining work.
+#
+# Tile builds:
+#   Valhalla has no incremental tile update, so any data change means a full
+#   rebuild.
+#   - default (blue/green): build into custom_files/.build, stop Valhalla only
+#     for the directory swap, verify health, and roll back to custom_files/.old
+#     if the new tiles do not answer.
+#   - --simple: rebuild in place. Downtime equals the build time.
+#   - --rollback restores custom_files/.old manually.
+#   - --keep-old keeps .old after a successful swap instead of deleting it.
+#
+# External services (see README "Split deployment"):
+#   - DB_HOST != postgis: the bundled PostGIS is not started; migrations and the
+#     NHVR load still run against the external database.
+#   - VALHALLA_UPSTREAM != the bundled Valhalla: tile work is skipped on this
+#     host, and --tiles-only/--rollback refuse to run (run them there instead).
+#
+# Typical use:
+#   ./update.sh --dry-run     show what changed without doing anything
+#   ./update.sh               import + reload DB + build/swap tiles
+#   ./update.sh --db-only     only reload the PostGIS NHVR table
+#   ./update.sh --tiles-only  only rebuild tiles from the current PBF
 #
 #   ./update.sh [--dry-run] [--force] [--db-only] [--tiles-only]
 #               [--no-migrations] [--simple] [--keep-old] [--rollback]
@@ -55,6 +81,7 @@ while [[ $# -gt 0 ]]; do
 done
 
 [[ -f "$ENV_FILE" ]] || die ".env not found. Copy .env.example to .env and edit it."
+# Only validate the inputs needed by the selected mode.
 if [[ $TILES_ONLY -eq 1 ]]; then
   validate_inputs tiles
 elif [[ $DB_ONLY -eq 1 ]]; then
@@ -64,6 +91,8 @@ else
 fi
 read_state
 
+# This host only serves the web app / API; the tiles belong to the Valhalla
+# host, so do not try to build or roll them back here.
 if ! valhalla_is_local; then
   if [[ $TILES_ONLY -eq 1 || $ROLLBACK -eq 1 ]]; then
     die "VALHALLA_UPSTREAM is external (${VALHALLA_UPSTREAM}); this host does not manage the tile set. Run this on the Valhalla host, or build tiles there with the valhalla-tiles image."
@@ -78,6 +107,7 @@ fi
 
 CUR_PBF="$(fingerprint_pbf)"
 CUR_GPKG="$(fingerprint_gpkg)"
+# Compare with the last successful run. --force makes both look changed.
 PBF_CHANGED=1
 GPKG_CHANGED=1
 [[ "$CUR_PBF" == "$STATE_PBF" ]] && PBF_CHANGED=0
@@ -104,6 +134,7 @@ EOF
 fi
 
 # ---- schema ------------------------------------------------------------------
+# Run once per update, before the NHVR load. --tiles-only never needs the DB.
 run_migrations() {
   [[ $NO_MIGRATIONS -eq 1 || $TILES_ONLY -eq 1 ]] && return 0
   log "applying compliance migrations"
@@ -152,9 +183,12 @@ if [[ $PBF_CHANGED -eq 0 && $GPKG_CHANGED -eq 0 ]]; then
 fi
 
 # ---- import + load + build ---------------------------------------------------
+# The full path: merge NHVR tags into the PBF, reload PostGIS, rebuild tiles.
 ensure_database
 run_migrations
 
+# No local Valhalla: the database is still refreshed, but there is no PBF import
+# or tile build to do on this host.
 if ! valhalla_is_local; then
   log "loading NHVR networks into PostGIS (Valhalla is external; no tile build)"
   compose run --rm --no-deps nhvr-tools load-db
@@ -187,6 +221,8 @@ fi
 seed_build_from_live "$COPY_ADMINS"
 
 if [[ $SIMPLE -eq 1 ]]; then
+  # In-place rebuild: move the live artifacts aside first, then build directly
+  # into custom_files. Valhalla is down for the whole build.
   log "rebuilding tiles in place (Valhalla will be unavailable)"
   rm -rf "$OLD_DIR"
   mkdir -p "$OLD_DIR"
@@ -215,12 +251,15 @@ if [[ $SIMPLE -eq 1 ]]; then
   cleanup_stale_pbfs
   rm -rf "$OLD_DIR"
 else
+  # Blue/green: build into .build, swap, verify, roll back on failure.
   log "building Valhalla tiles (this is the long step)"
   build_tiles "$BUILD_DIR" "${BUILD_ARGS[@]}"
   promote_build "$KEEP_OLD"
   reload_web_app
 fi
 
+# Only now is the state advanced. A failed run leaves the old fingerprints, so
+# the next ./update.sh retries the work.
 write_state "$CUR_PBF" "$CUR_GPKG"
 smoke_test
 log "update complete"
