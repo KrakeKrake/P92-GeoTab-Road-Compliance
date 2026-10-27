@@ -16,7 +16,15 @@ FROM nginx:1.29-alpine
 # envsubst writes /usr/share/nginx/html/config.js at container start.
 RUN apk add --no-cache gettext
 
-COPY nginx.conf /etc/nginx/conf.d/default.conf
+# Upstreams are substituted into the nginx config at container start. The
+# filter keeps nginx variables such as $host intact.
+ENV VALHALLA_UPSTREAM=http://valhalla:8002 \
+    API_UPSTREAM=http://compliance-api:5000 \
+    NGINX_ENVSUBST_FILTER="^(VALHALLA_UPSTREAM|API_UPSTREAM)$"
+
+# The stock server block is replaced by the template below.
+RUN rm -f /etc/nginx/conf.d/default.conf
+COPY nginx.conf /etc/nginx/templates/default.conf.template
 COPY docker/runtime-config.template.js /etc/nginx/runtime-config.template.js
 COPY docker-entrypoint.d/40-runtime-config.sh /docker-entrypoint.d/40-runtime-config.sh
 RUN chmod +x /docker-entrypoint.d/40-runtime-config.sh
