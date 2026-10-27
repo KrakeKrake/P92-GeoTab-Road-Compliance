@@ -58,6 +58,8 @@ When it finishes, open:
 - **Web app:** <http://localhost:8080>
 - **Valhalla status:** <http://localhost:8080/valhalla/status>
 - **API example:** <http://localhost:8080/api/compliance/profiles-by-licence/HC>
+- **Networks loaded on this server:** <http://localhost:8080/api/nhvr-access/networks>
+  (the web app reads this for its NHVR network picker)
 
 The install directory is self-contained. Manage the stack from there:
 

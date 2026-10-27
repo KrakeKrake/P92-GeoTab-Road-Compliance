@@ -2,6 +2,7 @@ import os
 from dotenv import load_dotenv
 from flask import Blueprint, request, jsonify
 from sqlalchemy import create_engine, text
+from sqlalchemy.exc import ProgrammingError
 from sqlalchemy.orm import declarative_base, sessionmaker
 from sqlalchemy import bindparam
 
@@ -75,6 +76,27 @@ def request_network_access_id():
         result = conn.execute(stmt, {"ids": ids})
         rows = result.fetchall()
         return jsonify(format_response(rows))
+
+# List the network names currently loaded in the database
+# To replace having a hardcoded list on the frontend
+@access_blueprint.route("/networks", methods=["GET"])
+def list_networks():
+    try:
+        with engine.connect() as conn:
+            rows = conn.execute(
+                text("""
+                    SELECT DISTINCT network_name
+                    FROM nhvr_access.nhvr_network_access
+                    ORDER BY network_name
+                """)
+            ).fetchall()
+    except ProgrammingError:
+        # The NHVR table is created by the data load, which runs after the
+        # schema migrations on a fresh install. Treat "not loaded yet" as an
+        # empty picker instead of a 500.
+        rows = []
+
+    return jsonify({"networks": [row.network_name for row in rows]})
 
 
 
