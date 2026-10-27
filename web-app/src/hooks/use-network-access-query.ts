@@ -7,17 +7,26 @@ import { useCommonStore } from '@/stores/common-store';
 import { useNetworkAccessStore } from '@/stores/nhvr-store';
 import { getAppConfig } from '@/utils/runtime-config';
 
-const ACCESS_MAP: Record<number, NetworkAccessType> = {
-  0: 'allowed',
-  1: 'conditional',
-  2: 'restricted',
+// The API returns access_code strings ("Approved", "Approved with Conditions",
+// "Restricted"); accept the numeric form too for older responses.
+const ACCESS_MAP: Record<string, NetworkAccessType> = {
+  '0': 'allowed',
+  '1': 'conditional',
+  '2': 'restricted',
+  Approved: 'allowed',
+  'Approved with Conditions': 'conditional',
+  Restricted: 'restricted',
 };
 
 interface RawNetworkAccess {
   networkName: string;
-  access: number;
+  access: string | number;
   description?: string | null;
   manager?: string | null;
+}
+
+export function normalizeAccess(value: string | number): NetworkAccessType {
+  return ACCESS_MAP[String(value)] ?? 'allowed';
 }
 
 // `??` keeps an explicitly empty value, which means "same origin" behind the
@@ -40,7 +49,7 @@ async function fetchNetworkAccess(
   for (const [wayId, entries] of Object.entries(raw)) {
     map[wayId] = (entries as RawNetworkAccess[]).map((e) => ({
       networkName: e.networkName,
-      access: ACCESS_MAP[e.access] ?? 'allowed',
+      access: normalizeAccess(e.access),
       description: e.description ?? '',
       road_manager: e.manager ?? '',
     }));

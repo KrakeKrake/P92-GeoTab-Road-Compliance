@@ -39,6 +39,7 @@ PREPARE_ONLY=0
 RESET_DB=0
 FORCE=0
 COPY_DATA=0
+DOCKER_ROOTFUL=0
 
 log()  { printf '\033[1;32m==>\033[0m %s\n' "$*"; }
 warn() { printf '\033[1;33mWARN:\033[0m %s\n' "$*" >&2; }
@@ -113,6 +114,7 @@ if [[ -z "$PUID" || -z "$PGID" ]]; then
     if [[ "$_compose_out" == *"Docker Compose version"* ]]; then
       _rootless="$(docker info --format '{{.Rootless}}' 2>/dev/null || true)"
       if [[ "$_rootless" == "false" ]]; then
+        DOCKER_ROOTFUL=1
         PUID="$(id -u)"
         PGID="$(id -g)"
       fi
@@ -159,6 +161,52 @@ remove_db_volume() {
   log "removing database volume $DB_VOLUME_NAME"
   "$cli" volume rm "$DB_VOLUME_NAME" >/dev/null 2>&1 \
     || die "could not remove volume $DB_VOLUME_NAME; stop the stack first (docker compose down) and re-run with --reset-db"
+}
+
+# ---- .env helpers ------------------------------------------------------------
+set_env() {
+  local file="$1" key="$2" value="$3"
+  KEY="$key" VALUE="$value" awk '
+    BEGIN { k = ENVIRON["KEY"]; v = ENVIRON["VALUE"] }
+    index($0, k "=") == 1 { print k "=" v; found = 1; next }
+    { print }
+    END { if (!found) print k "=" v }
+  ' "$file" > "$file.tmp"
+  mv "$file.tmp" "$file"
+}
+
+env_value() {
+  local file="$1" key="$2"
+  sed -n "s/^${key}=//p" "$file" 2>/dev/null | tail -n 1 | sed 's/[[:space:]]*$//'
+}
+
+ensure_env_key() {
+  local file="$1" key="$2" value="$3"
+  grep -q "^${key}=" "$file" 2>/dev/null && return 0
+  printf '%s=%s\n' "$key" "$value" >> "$file"
+}
+
+upstream_host() {
+  local value="$1"
+  value="${value#*://}"
+  value="${value%%/*}"
+  value="${value%%:*}"
+  printf '%s' "$value"
+}
+
+# Mirror the derivation in scripts/lib.sh so manual `docker compose` commands
+# and the setup scripts enable the same profiles.
+compose_profiles_for_env() {
+  local file="$1" db_host valhalla_upstream api_upstream
+  local profiles=()
+  db_host="$(env_value "$file" DB_HOST)"; db_host="${db_host:-postgis}"
+  valhalla_upstream="$(env_value "$file" VALHALLA_UPSTREAM)"; valhalla_upstream="${valhalla_upstream:-http://valhalla:8002}"
+  api_upstream="$(env_value "$file" API_UPSTREAM)"; api_upstream="${api_upstream:-http://compliance-api:5000}"
+  [[ "$db_host" == "postgis" ]] && profiles+=(local-db)
+  [[ "$(upstream_host "$valhalla_upstream")" == "valhalla" ]] && profiles+=(local-valhalla)
+  [[ "$(upstream_host "$api_upstream")" == "compliance-api" ]] && profiles+=(local-api)
+  local IFS=,
+  printf '%s' "${profiles[*]}"
 }
 
 # ---- install directory -------------------------------------------------------
@@ -221,8 +269,34 @@ else
 fi
 
 if [[ $HAVE_ENV -eq 1 ]]; then
-  # setup.sh will validate the existing values.
-  :
+  # Older .env files predate the topology settings and PUID/PGID. Add what is
+  # missing without changing any value the user already set.
+  if [[ -w "$INSTALL_DIR/.env" ]]; then
+    ensure_env_key "$INSTALL_DIR/.env" PUID "$PUID"
+    ensure_env_key "$INSTALL_DIR/.env" PGID "$PGID"
+    ensure_env_key "$INSTALL_DIR/.env" DB_HOST "postgis"
+    ensure_env_key "$INSTALL_DIR/.env" DB_PORT "5432"
+    ensure_env_key "$INSTALL_DIR/.env" DB_SSLMODE "prefer"
+    ensure_env_key "$INSTALL_DIR/.env" VALHALLA_UPSTREAM "http://valhalla:8002"
+    ensure_env_key "$INSTALL_DIR/.env" API_UPSTREAM "http://compliance-api:5000"
+    if ! grep -q '^COMPOSE_PROFILES=' "$INSTALL_DIR/.env"; then
+      ensure_env_key "$INSTALL_DIR/.env" COMPOSE_PROFILES "$(compose_profiles_for_env "$INSTALL_DIR/.env")"
+    fi
+  else
+    warn "$INSTALL_DIR/.env is not writable by $(id -un); skipping missing-key backfill"
+  fi
+
+  _env_puid="$(env_value "$INSTALL_DIR/.env" PUID)"
+  _env_pgid="$(env_value "$INSTALL_DIR/.env" PGID)"
+  if [[ $DOCKER_ROOTFUL -eq 1 ]]; then
+    if [[ -w "$INSTALL_DIR/.env" && ( "$_env_puid" == "0" || "$_env_pgid" == "0" ) ]]; then
+      set_env "$INSTALL_DIR/.env" PUID "$(id -u)"
+      set_env "$INSTALL_DIR/.env" PGID "$(id -g)"
+      log "set PUID/PGID to $(id -u):$(id -g) in .env (rootful Docker)"
+    elif [[ "$_env_puid" != "$(id -u)" || "$_env_pgid" != "$(id -g)" ]]; then
+      warn "PUID/PGID in $INSTALL_DIR/.env are ${_env_puid:-unset}:${_env_pgid:-unset}, but this user is $(id -u):$(id -g). Containers will write into custom_files as the .env user; set PUID=$(id -u) and PGID=$(id -g) and chown custom_files if that is not intended."
+    fi
+  fi
 else
   [[ -n "$NHVR_GPKG_DIR" ]] || die "NHVR GeoPackage directory is required (--nhvr-gpkg-dir or interactive prompt)"
   [[ -d "$NHVR_GPKG_DIR" ]] || die "NHVR GeoPackage directory does not exist: $NHVR_GPKG_DIR"
@@ -285,6 +359,7 @@ bundle=(
   .env.example
   setup.sh
   update.sh
+  compose.sh
   nginx.conf
   README.md
   scripts/lib.sh
@@ -303,20 +378,9 @@ for rel in "${bundle[@]}"; do
   fi
 done
 
-chmod +x "$INSTALL_DIR/setup.sh" "$INSTALL_DIR/update.sh" "$INSTALL_DIR/scripts/lib.sh"
+chmod +x "$INSTALL_DIR/setup.sh" "$INSTALL_DIR/update.sh" "$INSTALL_DIR/compose.sh" "$INSTALL_DIR/scripts/lib.sh"
 
 # ---- write .env --------------------------------------------------------------
-set_env() {
-  local file="$1" key="$2" value="$3"
-  KEY="$key" VALUE="$value" awk '
-    BEGIN { k = ENVIRON["KEY"]; v = ENVIRON["VALUE"] }
-    index($0, k "=") == 1 { print k "=" v; found = 1; next }
-    { print }
-    END { if (!found) print k "=" v }
-  ' "$file" > "$file.tmp"
-  mv "$file.tmp" "$file"
-}
-
 if [[ ! -f "$INSTALL_DIR/.env" || $RECONFIGURE -eq 1 ]]; then
   [[ -f "$INSTALL_DIR/.env" ]] && cp -f "$INSTALL_DIR/.env" "$INSTALL_DIR/.env.bak"
   cp -f "$INSTALL_DIR/.env.example" "$INSTALL_DIR/.env"

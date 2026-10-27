@@ -87,9 +87,7 @@ if [[ $NO_BUILD -eq 0 ]]; then
 fi
 
 # ---- database schema ---------------------------------------------------------
-log "starting postgis"
-compose up -d postgis
-wait_for_postgres
+ensure_database
 
 if [[ $SKIP_COMPLIANCE -eq 0 ]]; then
   if [[ $RESET_COMPLIANCE -eq 1 ]]; then
@@ -103,23 +101,27 @@ if [[ $SKIP_COMPLIANCE -eq 0 ]]; then
 fi
 
 # ---- data --------------------------------------------------------------------
-rm -rf "$BUILD_DIR"
-mkdir -p "$BUILD_DIR"
+if valhalla_is_local; then
+  rm -rf "$BUILD_DIR"
+  mkdir -p "$BUILD_DIR"
 
-if [[ $SKIP_PBF -eq 0 ]]; then
-  log "importing NHVR networks into the OSM PBF"
-  compose run --rm --no-deps \
-    -e OUTPUT_PBF=/custom_files/.build/nhvr.osm.pbf \
-    nhvr-tools import
-else
-  if [[ $SKIP_TILES -eq 0 ]]; then
-    log "reusing custom_files/nhvr.osm.pbf (--skip-pbf)"
-    [[ -f "$CUSTOM_FILES/nhvr.osm.pbf" ]] \
-      || die "--skip-pbf requested but custom_files/nhvr.osm.pbf does not exist"
-    cp -f "$CUSTOM_FILES/nhvr.osm.pbf" "$BUILD_DIR/nhvr.osm.pbf"
+  if [[ $SKIP_PBF -eq 0 ]]; then
+    log "importing NHVR networks into the OSM PBF"
+    compose run --rm --no-deps \
+      -e OUTPUT_PBF=/custom_files/.build/nhvr.osm.pbf \
+      nhvr-tools import
   else
-    log "skipping PBF import (--skip-pbf and --skip-tiles)"
+    if [[ $SKIP_TILES -eq 0 ]]; then
+      log "reusing custom_files/nhvr.osm.pbf (--skip-pbf)"
+      [[ -f "$CUSTOM_FILES/nhvr.osm.pbf" ]] \
+        || die "--skip-pbf requested but custom_files/nhvr.osm.pbf does not exist"
+      cp -f "$CUSTOM_FILES/nhvr.osm.pbf" "$BUILD_DIR/nhvr.osm.pbf"
+    else
+      log "skipping PBF import (--skip-pbf and --skip-tiles)"
+    fi
   fi
+else
+  log "VALHALLA_UPSTREAM=${VALHALLA_UPSTREAM} is external; skipping the PBF import and tile build"
 fi
 
 if [[ $SKIP_DB -eq 0 ]]; then
@@ -128,15 +130,19 @@ if [[ $SKIP_DB -eq 0 ]]; then
 fi
 
 if [[ $SKIP_TILES -eq 0 ]]; then
-  log "building Valhalla tiles (this is the long step)"
-  # Reuse admin/timezone DBs if this is a re-run over an existing directory.
-  seed_build_from_live 1
-  build_tiles "$BUILD_DIR"
-  promote_build 0
+  if valhalla_is_local; then
+    log "building Valhalla tiles (this is the long step)"
+    # Reuse admin/timezone DBs if this is a re-run over an existing directory.
+    seed_build_from_live 1
+    build_tiles "$BUILD_DIR"
+    promote_build 0
+  fi
 else
   log "skipping tile build (--skip-tiles)"
-  [[ -d "$CUSTOM_FILES/valhalla_tiles" || -f "$CUSTOM_FILES/valhalla_tiles.tar" ]] \
-    || warn "no tiles present; Valhalla will not serve routes until update.sh runs"
+  if valhalla_is_local; then
+    [[ -d "$CUSTOM_FILES/valhalla_tiles" || -f "$CUSTOM_FILES/valhalla_tiles.tar" ]] \
+      || warn "no tiles present; Valhalla will not serve routes until update.sh runs"
+  fi
 fi
 
 log "starting the stack"
@@ -156,7 +162,8 @@ reload_web_app
 read_state
 PBF_STATE="$STATE_PBF"
 GPKG_STATE="$STATE_GPKG"
-[[ $SKIP_PBF -eq 0 && $SKIP_TILES -eq 0 ]] && PBF_STATE="$(fingerprint_pbf)"
+[[ $SKIP_PBF -eq 0 && $SKIP_TILES -eq 0 ]] && valhalla_is_local \
+  && PBF_STATE="$(fingerprint_pbf)"
 [[ $SKIP_DB -eq 0 ]] && GPKG_STATE="$(fingerprint_gpkg)"
 write_state "$PBF_STATE" "$GPKG_STATE"
 

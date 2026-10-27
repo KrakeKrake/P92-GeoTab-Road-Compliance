@@ -8,6 +8,7 @@ Seeded rows are only initial defaults; the web app can edit them afterwards.
 """
 import os
 import sys
+import time
 from pathlib import Path
 
 import psycopg2
@@ -18,13 +19,30 @@ MIGRATIONS = [
     "combined_seed.sql",
 ]
 CORE = {"combined_create_tables.sql", "combined_seed.sql"}
+CONNECT_TIMEOUT = float(os.environ.get("DB_CONNECT_TIMEOUT", "120"))
 
 
 def connect():
     url = os.environ.get("DATABASE_URL")
     if not url:
         sys.exit("DATABASE_URL is not set")
-    return psycopg2.connect(url.replace("+psycopg2", "").replace("+psycopg", ""))
+    dsn = url.replace("+psycopg2", "").replace("+psycopg", "")
+    deadline = time.monotonic() + CONNECT_TIMEOUT
+    attempt = 0
+    while True:
+        try:
+            return psycopg2.connect(dsn)
+        except psycopg2.OperationalError as exc:
+            if time.monotonic() >= deadline:
+                sys.exit(f"database not reachable within {CONNECT_TIMEOUT:.0f}s: {exc}")
+            attempt += 1
+            delay = min(attempt, 5)
+            print(
+                f"database not ready yet ({exc}); retrying in {delay}s",
+                file=sys.stderr,
+                flush=True,
+            )
+            time.sleep(delay)
 
 
 def table_exists(cur, name):

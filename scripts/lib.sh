@@ -29,6 +29,39 @@ FAILED_DIR="$CUSTOM_FILES/.failed"
 STATE_DIR="$ROOT/.state"
 STATE_FILE="$STATE_DIR/data"
 
+# ---- deployment topology -----------------------------------------------------
+# Local services are the defaults. Point these at external hosts to split the
+# stack; compose profiles are derived from them so both `docker compose` (via
+# ./compose.sh) and the setup/update scripts agree on what to start.
+DB_HOST="${DB_HOST:-postgis}"
+DB_PORT="${DB_PORT:-5432}"
+DB_SSLMODE="${DB_SSLMODE:-prefer}"
+VALHALLA_UPSTREAM="${VALHALLA_UPSTREAM:-http://valhalla:8002}"
+API_UPSTREAM="${API_UPSTREAM:-http://compliance-api:5000}"
+
+upstream_host() {
+  local value="$1"
+  value="${value#*://}"
+  value="${value%%/*}"
+  value="${value%%:*}"
+  printf '%s' "$value"
+}
+
+db_is_local() { [[ "$DB_HOST" == "postgis" ]]; }
+valhalla_is_local() { [[ "$(upstream_host "$VALHALLA_UPSTREAM")" == "valhalla" ]]; }
+api_is_local() { [[ "$(upstream_host "$API_UPSTREAM")" == "compliance-api" ]]; }
+
+compose_profiles() {
+  local profiles=()
+  db_is_local && profiles+=(local-db)
+  valhalla_is_local && profiles+=(local-valhalla)
+  api_is_local && profiles+=(local-api)
+  local IFS=,
+  printf '%s' "${profiles[*]}"
+}
+COMPOSE_PROFILES="$(compose_profiles)"
+export COMPOSE_PROFILES
+
 # ---- compose -----------------------------------------------------------------
 if command -v docker >/dev/null 2>&1 && docker compose version >/dev/null 2>&1; then
   COMPOSE=(docker compose)
@@ -72,6 +105,20 @@ image_present() {
   [[ ${#DOCKER[@]} -gt 0 ]] && "${DOCKER[@]}" image inspect "$1" >/dev/null 2>&1
 }
 
+# ---- filesystem --------------------------------------------------------------
+# Containers can leave root-owned files behind in custom_files (a previous
+# rootful run, or docker creating the bind-mount target). Fail early with the
+# chown command instead of a bare "Permission denied" halfway through setup.
+require_writable_dir() {
+  local dir="$1" label="${2:-$1}"
+  mkdir -p "$dir" 2>/dev/null || true
+  [[ -d "$dir" && -w "$dir" ]] && return 0
+  die "$label is not writable by $(id -un) (uid $(id -u)): $dir
+Fix the ownership once with:
+  sudo chown -R $(id -u):$(id -g) \"$dir\"
+or install the stack into a directory your user owns."
+}
+
 # ---- validation --------------------------------------------------------------
 # mode: full (base PBF + GeoPackages), db (GeoPackages), tiles (live PBF),
 # none (only .env/directories). Deployment servers may only have custom_files.
@@ -79,14 +126,19 @@ validate_inputs() {
   local mode="${1:-full}"
   local _compose_out _rootless
   [[ -f "$ENV_FILE" ]] || die ".env not found. Copy .env.example to .env and edit it."
-  mkdir -p "$CUSTOM_FILES" "$STATE_DIR"
+  require_writable_dir "$CUSTOM_FILES" "custom_files (Valhalla tiles and PBF)"
+  require_writable_dir "$STATE_DIR" "the update-state directory"
   # Rootful Docker writes bind-mounted files as root; the host-side promotion
   # then fails with permission denied. Warn before the long tile build.
-  if [[ "${PUID:-0}" == "0" ]] && command -v docker >/dev/null 2>&1; then
+  if command -v docker >/dev/null 2>&1; then
     _compose_out="$(docker compose version 2>&1 || true)"
     if [[ "$_compose_out" == *"Docker Compose version"* ]] \
        && [[ "$(docker info --format '{{.Rootless}}' 2>/dev/null || true)" == "false" ]]; then
-      warn "rootful Docker detected; set PUID=$(id -u) and PGID=$(id -g) in .env, then chown custom_files once, or tile promotion may fail with permission denied"
+      if [[ "${PUID:-0}" == "0" ]]; then
+        warn "rootful Docker detected but PUID is 0; containers will write into custom_files as root. Set PUID=$(id -u) and PGID=$(id -g) in .env, then chown custom_files once."
+      elif [[ "${PUID:-0}" != "$(id -u)" || "${PGID:-0}" != "$(id -g)" ]]; then
+        warn "rootful Docker: containers run as ${PUID:-0}:${PGID:-0}, but this shell is uid $(id -u), gid $(id -g). The host-side tile promotion will fail unless they match; update PUID/PGID in .env."
+      fi
     fi
   fi
   case "$mode" in
@@ -136,6 +188,16 @@ write_state() {
 }
 
 # ---- waits -------------------------------------------------------------------
+ensure_database() {
+  if db_is_local; then
+    log "starting postgis"
+    compose up -d postgis
+    wait_for_postgres
+  else
+    log "using external database ${DB_HOST}:${DB_PORT}"
+  fi
+}
+
 wait_for_postgres() {
   log "waiting for postgis"
   local i
@@ -202,6 +264,8 @@ smoke_test() {
 build_tiles() {
   local dir="$1"
   shift
+  valhalla_is_local \
+    || die "VALHALLA_UPSTREAM is external (${VALHALLA_UPSTREAM}); build tiles on the Valhalla host instead"
   VALHALLA_BUILD_DIR="$dir" compose --profile tools run --rm --no-deps "$@" valhalla-tiles
 }
 
@@ -252,6 +316,8 @@ reload_web_app() {
 }
 
 rollback_build() {
+  valhalla_is_local \
+    || die "VALHALLA_UPSTREAM is external (${VALHALLA_UPSTREAM}); there are no local tiles to roll back"
   [[ -d "$OLD_DIR" ]] || die "no .old directory to roll back to"
   log "rolling back tiles"
   compose stop valhalla >/dev/null 2>&1 || true

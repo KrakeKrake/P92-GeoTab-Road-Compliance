@@ -64,6 +64,13 @@ else
 fi
 read_state
 
+if ! valhalla_is_local; then
+  if [[ $TILES_ONLY -eq 1 || $ROLLBACK -eq 1 ]]; then
+    die "VALHALLA_UPSTREAM is external (${VALHALLA_UPSTREAM}); this host does not manage the tile set. Run this on the Valhalla host, or build tiles there with the valhalla-tiles image."
+  fi
+  log "VALHALLA_UPSTREAM=${VALHALLA_UPSTREAM} is external; only the PostGIS data will be refreshed"
+fi
+
 if [[ $ROLLBACK -eq 1 ]]; then
   rollback_build
   exit 0
@@ -87,9 +94,9 @@ if [[ $DRY_RUN -eq 1 ]]; then
 base PBF changed:   $( [[ $PBF_CHANGED -eq 1 ]] && echo yes || echo no )
 NHVR GeoPackages:   $( [[ $GPKG_CHANGED -eq 1 ]] && echo changed || echo unchanged )
 would migrate:      $( [[ $NO_MIGRATIONS -eq 1 || $TILES_ONLY -eq 1 ]] && echo no || echo yes )
-would import PBF:   $( [[ $TILES_ONLY -eq 0 && $changed -eq 1 ]] && echo yes || echo no )
+would import PBF:   $( [[ $TILES_ONLY -eq 0 && $changed -eq 1 ]] && valhalla_is_local && echo yes || echo no )
 would reload DB:    $( [[ $TILES_ONLY -eq 0 && ( $DB_ONLY -eq 1 || $changed -eq 1 ) ]] && echo yes || echo no )
-would build tiles:  $( [[ $DB_ONLY -eq 0 && $changed -eq 1 ]] && echo yes || echo no )
+would build tiles:  $( [[ $DB_ONLY -eq 0 && $changed -eq 1 ]] && valhalla_is_local && echo yes || echo no )
 mode:               $( [[ $SIMPLE -eq 1 ]] && echo "in-place" || echo "blue/green" )
 EOF
   [[ $changed -eq 0 && $DB_ONLY -eq 0 && $TILES_ONLY -eq 0 ]] && echo "nothing to do (use --force)"
@@ -108,8 +115,7 @@ if [[ $DB_ONLY -eq 1 ]]; then
   if [[ $GPKG_CHANGED -eq 0 ]]; then
     log "NHVR GeoPackages unchanged (use --force to reload)"
   fi
-  compose up -d postgis
-  wait_for_postgres
+  ensure_database
   run_migrations
   log "reloading NHVR networks into PostGIS"
   compose run --rm --no-deps nhvr-tools load-db
@@ -139,17 +145,24 @@ fi
 
 # ---- nothing changed ---------------------------------------------------------
 if [[ $PBF_CHANGED -eq 0 && $GPKG_CHANGED -eq 0 ]]; then
-  compose up -d postgis
-  wait_for_postgres
+  ensure_database
   run_migrations
   log "NHVR data and tiles are up to date (use --force to rebuild)"
   exit 0
 fi
 
 # ---- import + load + build ---------------------------------------------------
-compose up -d postgis
-wait_for_postgres
+ensure_database
 run_migrations
+
+if ! valhalla_is_local; then
+  log "loading NHVR networks into PostGIS (Valhalla is external; no tile build)"
+  compose run --rm --no-deps nhvr-tools load-db
+  write_state "$CUR_PBF" "$CUR_GPKG"
+  smoke_test
+  log "update complete"
+  exit 0
+fi
 
 rm -rf "$BUILD_DIR"
 mkdir -p "$BUILD_DIR"

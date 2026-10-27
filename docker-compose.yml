@@ -20,6 +20,9 @@ name: ${COMPOSE_PROJECT_NAME:-nhvr-compliance}
 services:
   postgis:
     image: docker.io/pgrouting/pgrouting:18-3.6-4.0
+    # Only needed for a self-contained install. Remove local-db from
+    # COMPOSE_PROFILES when DB_HOST points at an external server.
+    profiles: ["local-db"]
     restart: unless-stopped
     environment:
       POSTGRES_DB: ${DB_NAME:-nhvr_compliance}
@@ -37,28 +40,27 @@ services:
     networks:
       - nhvr
 
-  # Applies db/compliance/migrate.py once; a no-op after the first run.
+  # Applies db/compliance/migrate.py once; a no-op after the first run. It
+  # retries the connection itself, so it does not depend on the bundled
+  # postgis container and also works against an external database.
   db-migrate:
     image: ${IMAGE_REPO:?set IMAGE_REPO in .env}:compliance-api-${IMAGE_TAG:-latest}
     restart: "no"
     command: ["python", "-m", "compliance.migrate"]
     environment:
-      DATABASE_URL: postgresql+psycopg2://${DB_USER:-nhvr}:${DB_PASSWORD}@postgis:5432/${DB_NAME:-nhvr_compliance}
-    depends_on:
-      postgis:
-        condition: service_healthy
+      DATABASE_URL: postgresql+psycopg2://${DB_USER:-nhvr}:${DB_PASSWORD}@${DB_HOST:-postgis}:${DB_PORT:-5432}/${DB_NAME:-nhvr_compliance}?sslmode=${DB_SSLMODE:-prefer}
     networks:
       - nhvr
 
   compliance-api:
     image: ${IMAGE_REPO:?set IMAGE_REPO in .env}:compliance-api-${IMAGE_TAG:-latest}
+    # Remove local-api from COMPOSE_PROFILES to use an external API.
+    profiles: ["local-api"]
     restart: unless-stopped
     environment:
-      DATABASE_URL: postgresql+psycopg2://${DB_USER:-nhvr}:${DB_PASSWORD}@postgis:5432/${DB_NAME:-nhvr_compliance}
+      DATABASE_URL: postgresql+psycopg2://${DB_USER:-nhvr}:${DB_PASSWORD}@${DB_HOST:-postgis}:${DB_PORT:-5432}/${DB_NAME:-nhvr_compliance}?sslmode=${DB_SSLMODE:-prefer}
       API_WORKERS: ${API_WORKERS:-2}
     depends_on:
-      postgis:
-        condition: service_healthy
       db-migrate:
         condition: service_completed_successfully
     healthcheck:
@@ -97,6 +99,8 @@ services:
 
   valhalla:
     image: ${IMAGE_REPO:?set IMAGE_REPO in .env}:valhalla-${IMAGE_TAG:-latest}
+    # Remove local-valhalla from COMPOSE_PROFILES to use an external server.
+    profiles: ["local-valhalla"]
     restart: unless-stopped
     environment:
       serve_tiles: "True"
@@ -134,8 +138,12 @@ services:
       VITE_CENTER_COORDS: ${VITE_CENTER_COORDS:--37.8136,144.9631}
       VITE_DEFAULT_COSTING_MODEL: ${VITE_DEFAULT_COSTING_MODEL:-truck}
       VITE_CLIENT_ID: ${VITE_CLIENT_ID:-nhvr-web-app}
-    depends_on:
-      - compliance-api
+      # nginx proxy targets, written into the config at container start. Point
+      # these at external hosts to split the web server from routing/the API.
+      VALHALLA_UPSTREAM: ${VALHALLA_UPSTREAM:-http://valhalla:8002}
+      API_UPSTREAM: ${API_UPSTREAM:-http://compliance-api:5000}
+    # No depends_on: the API may be external, and podman-compose errors when a
+    # dependency is disabled by profile. Restart policy covers a slow start.
     ports:
       - "${WEB_BIND_ADDR:-0.0.0.0}:${WEB_PORT:-8080}:80"
     healthcheck:
@@ -157,8 +165,9 @@ services:
       OSM_PBF_DIR: /data/osm
       OSM_PBF_NAME: ${OSM_PBF_NAME:-}
       OUTPUT_PBF: /custom_files/nhvr.osm.pbf
-      PGHOST: postgis
-      PGPORT: "5432"
+      PGHOST: ${DB_HOST:-postgis}
+      PGPORT: "${DB_PORT:-5432}"
+      PGSSLMODE: ${DB_SSLMODE:-prefer}
       PGDATABASE: ${DB_NAME:-nhvr_compliance}
       PGUSER: ${DB_USER:-nhvr}
       PGPASSWORD: ${DB_PASSWORD}
@@ -175,13 +184,13 @@ services:
     image: docker.io/library/nginx:alpine
     restart: unless-stopped
     profiles: ["external"]
-    depends_on:
-      valhalla:
-        condition: service_healthy
+    environment:
+      VALHALLA_UPSTREAM: ${VALHALLA_UPSTREAM:-http://valhalla:8002}
+      NGINX_ENVSUBST_FILTER: "^(VALHALLA_UPSTREAM)$"
     ports:
       - "${VALHALLA_CORS_PORT:-8003}:80"
     volumes:
-      - ./nginx.conf:/etc/nginx/conf.d/default.conf:z
+      - ./nginx.conf:/etc/nginx/templates/default.conf.template:z
     networks:
       - nhvr
 
@@ -190,9 +199,8 @@ services:
     image: docker.io/library/adminer:latest
     restart: unless-stopped
     profiles: ["tools"]
-    depends_on:
-      postgis:
-        condition: service_healthy
+    environment:
+      ADMINER_DEFAULT_SERVER: ${DB_HOST:-postgis}
     ports:
       - "127.0.0.1:${ADMINER_PORT:-5433}:8080"
     networks:

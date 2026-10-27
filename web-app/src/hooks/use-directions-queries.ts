@@ -44,6 +44,14 @@ async function fetchDirections() {
     dateTime,
     language,
   });
+
+  // Map clicks (and some geocoder results) can be off-road. Give Loki enough
+  // room to snap to a truck-accessible edge; without it the truck profile
+  // returns "No path could be found" for otherwise routable points.
+  valhallaRequest.json.locations = valhallaRequest.json.locations.map(
+    (location) => ({ ...location, radius: 50 })
+  );
+
   const params = new URLSearchParams({
     json: JSON.stringify(valhallaRequest.json),
   });
@@ -55,19 +63,68 @@ async function fetchDirections() {
     },
   });
 
-  if (!response.ok) {
-    const errorData = await response.json().catch(() => ({}));
-    let error_msg = errorData.error || 'Could not fetch resource';
+  let routeResponse = response;
 
-    // Append context for route-specific error
-    if (errorData.error_code === 154) {
-      error_msg += ` for route.`;
+  if (!routeResponse.ok) {
+    const errorData = await routeResponse.json().catch(() => ({}));
+    // A selected NHVR network can make the route impossible (for example a
+    // bus-only network on a truck route). Retry without the network filter so
+    // the user still gets a route and can see the network markings.
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const requestJson = valhallaRequest.json as any;
+    const selectedNetworks =
+      requestJson.costing_options?.[requestJson.costing]?.nhvr_networks;
+
+    if (
+      errorData.error_code === 442 &&
+      Array.isArray(selectedNetworks) &&
+      selectedNetworks.length > 0
+    ) {
+      const fallbackJson = JSON.parse(JSON.stringify(requestJson));
+      if (fallbackJson.costing_options?.[fallbackJson.costing]) {
+        delete fallbackJson.costing_options[fallbackJson.costing].nhvr_networks;
+      }
+      delete fallbackJson.filters;
+
+      const fallbackParams = new URLSearchParams({
+        json: JSON.stringify(fallbackJson),
+      });
+      const fallbackResponse = await fetch(
+        `${getValhallaUrl()}/route?${fallbackParams}`,
+        {
+          headers: {
+            'Content-Type': 'application/json',
+            ...VALHALLA_CLIENT_HEADERS,
+          },
+        }
+      );
+
+      if (fallbackResponse.ok) {
+        toast.warning('No route with the selected NHVR network', {
+          description:
+            'Showing a route without the network restriction. Clear the selection or choose another network.',
+          position: 'bottom-center',
+          duration: 7000,
+          closeButton: true,
+        });
+        routeResponse = fallbackResponse;
+      } else {
+        let error_msg = errorData.error || 'Could not fetch resource';
+        if (errorData.error_code === 154) {
+          error_msg += ` for route.`;
+        }
+        throw new Error(error_msg);
+      }
+    } else {
+      let error_msg = errorData.error || 'Could not fetch resource';
+      if (errorData.error_code === 154) {
+        error_msg += ` for route.`;
+      }
+      throw new Error(error_msg);
     }
-
-    throw new Error(error_msg);
   }
 
-  const data: ValhallaRouteResponse = await response.json();
+  const data: ValhallaRouteResponse = await routeResponse.json();
 
   // Parse geometry for main route
   (data as ParsedDirectionsGeometry).decodedGeometry =

@@ -137,10 +137,12 @@ work when nothing changed.
 
 `setup.sh` runs the data pipeline in order:
 
-1. starts PostGIS and applies the compliance schema and first-run seed data;
+1. starts PostGIS (unless `DB_HOST` points at an external database) and applies
+   the compliance schema and first-run seed data;
 2. merges the NHVR access tags from the GeoPackages into the OSM PBF;
 3. loads the same NHVR data into PostGIS for the API;
-4. builds the Valhalla routing tiles;
+4. builds the Valhalla routing tiles (skipped when `VALHALLA_UPSTREAM` is
+   external);
 5. starts the stack.
 
 The seeded vehicle templates, goods rules and compliance defaults are **initial
@@ -206,6 +208,16 @@ docker compose start              # start it again
 docker compose down               # remove containers (data volumes stay)
 ```
 
+When any service lives outside this host (see
+[Split deployment](#split-deployment-external-database--valhalla--api)), use
+`./compose.sh` instead of `docker compose`. It derives the Compose profiles from
+`.env` so a bundled container does not shadow an external one:
+
+```bash
+./compose.sh up -d web-app
+./compose.sh ps
+```
+
 ### Ports
 
 The web app is the only port published in the deployment file:
@@ -217,6 +229,67 @@ The web app is the only port published in the deployment file:
 | `http://localhost:8080/api/...` | Compliance API through the web app |
 
 Change `WEB_PORT` in `.env` and run `docker compose up -d web-app` to move it.
+
+### Split deployment (external database / Valhalla / API)
+
+The stack does not have to run on one host. Three `.env` values select where
+each dependency lives; the bundled containers are only started when the
+corresponding value is the default:
+
+| `.env` value | Default | Bundled service runs when |
+|---|---|---|
+| `DB_HOST` + `DB_PORT` + `DB_SSLMODE` | `postgis:5432` | `DB_HOST=postgis` (profile `local-db`) |
+| `VALHALLA_UPSTREAM` | `http://valhalla:8002` | host is `valhalla` (profile `local-valhalla`) |
+| `API_UPSTREAM` | `http://compliance-api:5000` | host is `compliance-api` (profile `local-api`) |
+
+Both upstream values are full origins without a trailing slash. The web app
+still proxies `/valhalla/` and `/api/`, so `VITE_VALHALLA_URL=/valhalla` and
+`VITE_NHVR_API_URL=` do not change; the browser only ever talks to the web app.
+
+Example: local Valhalla and API, database on RDS:
+
+```dotenv
+DB_HOST=mydb.abc123.ap-southeast-2.rds.amazonaws.com
+DB_PORT=5432
+DB_SSLMODE=require
+VALHALLA_UPSTREAM=http://valhalla:8002
+API_UPSTREAM=http://compliance-api:5000
+```
+
+Then run `./setup.sh` (or `./update.sh --db-only` for an existing install).
+`setup.sh`, `update.sh` and `./compose.sh` derive `COMPOSE_PROFILES` from these
+values, so the bundled PostGIS is not started. Plain `docker compose` reads the
+literal `COMPOSE_PROFILES` line from `.env`; either keep it in sync when you
+edit the values above, or use `./compose.sh`.
+
+External database notes:
+
+- The role needs permission to create the `compliance`, `account` and
+  `nhvr_access` schemas and the `postgis`/`pgrouting` extensions (the NHVR
+  loader creates them). On RDS, use the master user or a member of
+  `rds_superuser`.
+- `DB_PASSWORD` must be URL-safe, because it is embedded in `DATABASE_URL`.
+- The local `nhvr-compliance-pgdata` volume is not used; back the database up
+  with the provider's tooling.
+- `docker-compose.override.yml`'s debug port binding for `postgis` is ignored
+  when the bundled container is not running.
+
+Example: database on RDS, Valhalla and the API on their own hosts, web app here:
+
+```dotenv
+DB_HOST=mydb.abc123.ap-southeast-2.rds.amazonaws.com
+DB_SSLMODE=require
+VALHALLA_UPSTREAM=https://routing.internal.example.com
+API_UPSTREAM=https://api.internal.example.com
+```
+
+- A host that runs the API sets `COMPOSE_PROFILES=local-api` (plus its own
+  database settings) and runs `./compose.sh up -d`. Migrations run there.
+- A web-only host runs just `web-app` (`./compose.sh up -d web-app`). It does
+  not need `custom_files/`, the GeoPackages or the OSM extract.
+- A Valhalla host builds its own tiles. `setup.sh`/`update.sh` skip the tile
+  build when `VALHALLA_UPSTREAM` is external, and `--tiles-only`/`--rollback`
+  refuse to run there on purpose.
 
 ### Optional tools
 
@@ -291,9 +364,17 @@ steps.
 Check `docker compose logs valhalla`. A missing `custom_files/nhvr.osm.pbf` or a
 failed tile build will leave it unhealthy; rerun `./setup.sh`.
 
-**`mv: cannot move ... Permission denied` or permission errors on `custom_files`.**
+**`custom_files` is not writable` / `mv: cannot move ... Permission denied`.**
 Rootful Docker writes bind-mounted files as root, so the host-side tile
-promotion cannot move them. Set the container user to your account once:
+promotion cannot move them. `setup.sh` and `update.sh` now stop before the long
+build if `custom_files` or `.state` is not writable and print the exact `chown`
+command:
+
+```bash
+sudo chown -R "$(id -u):$(id -g)" custom_files .state
+```
+
+Set the container user to your account once as well:
 
 ```bash
 cd ~/nhvr
@@ -323,6 +404,9 @@ docker compose up -d
 
 New installs on rootful Docker set `PUID`/`PGID` automatically. Rootless
 Podman uses `0`/`0` (container root maps to your user) and needs no change.
+Re-running `install.sh` over an existing install adds missing `PUID`/`PGID` (and
+the topology keys) to `.env`, replaces a `0:0` pair on rootful Docker, and warns
+when the values do not match the user running the installer.
 
 **I changed an image or `.env` and nothing happened.**
 The web app's `VITE_*` values are injected at container start, so recreate the
@@ -385,3 +469,11 @@ npx vitest run
 
 Note: the repository has some pre-existing Vitest failures in map/directions
 specs that are unrelated to the deployment changes.
+
+# Uninstalling
+Notably when uninstalling to reinstall, it is possible that three docker rementants remains, these can be removed by: 
+```bash
+docker stop nhvr-compliance-postgis-1
+docker rm nhvr-compliance-postgis-1
+docker volume rm nhvr-compliance-pgdata
+```
