@@ -5,7 +5,7 @@ import type {
 } from '@/components/map/types';
 import { useCommonStore } from '@/stores/common-store';
 import { useNetworkAccessStore } from '@/stores/nhvr-store';
-import { getAppConfig } from '@/utils/runtime-config';
+import { NHVR_API_URL } from '@/utils/nhvr-api';
 
 // The API returns access_code strings ("Approved", "Approved with Conditions",
 // "Restricted"); accept the numeric form too for older responses.
@@ -28,12 +28,6 @@ interface RawNetworkAccess {
 export function normalizeAccess(value: string | number): NetworkAccessType {
   return ACCESS_MAP[String(value)] ?? 'allowed';
 }
-
-// `??` keeps an explicitly empty value, which means "same origin" behind the
-// web app's nginx. `||` would silently fall back to localhost.
-const NHVR_API_URL = (
-  getAppConfig().VITE_NHVR_API_URL ?? 'http://localhost:5000'
-).replace(/\/$/, '');
 
 async function fetchNetworkAccess(
   networks: string[]

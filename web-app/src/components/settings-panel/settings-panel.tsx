@@ -26,6 +26,11 @@ import { useIsochronesQuery } from '@/hooks/use-isochrones-queries';
 import { CollapsibleSection } from '@/components/ui/collapsible-section';
 import { ServerSettings } from '@/components/settings-panel/server-settings';
 import { MultiSelectSetting } from '../ui/multiselect-setting';
+import {
+  EMPTY_NETWORKS,
+  useNhvrNetworksQuery,
+} from '@/hooks/use-nhvr-networks-query';
+import { NHVR_NETWORK_LABELS } from '@/utils/nhvr-network-labels';
 
 type ProfileWithSettings = Exclude<Profile, 'auto'>;
 
@@ -42,6 +47,7 @@ export const SettingsPanel = () => {
   const [copied, setCopied] = useState(false);
   const { refetch: refetchDirections } = useDirectionsQuery();
   const { refetch: refetchIsochrones } = useIsochronesQuery();
+  const { data: nhvrNetworkOptions = EMPTY_NETWORKS } = useNhvrNetworksQuery();
 
   const [profileSettingsOpen, setProfileSettingsOpen] = useState(true);
   const [generalSettingsOpen, setGeneralSettingsOpen] = useState(true);
@@ -205,7 +211,16 @@ export const SettingsPanel = () => {
                       value={
                         (settings[option.param] as string[]) ?? ['current']
                       }
-                      options={option.options}
+                      options={
+                        option.param === 'nhvr_networks'
+                          ? nhvrNetworkOptions
+                          : option.options
+                      }
+                      optionLabels={
+                        option.param === 'nhvr_networks'
+                          ? NHVR_NETWORK_LABELS
+                          : undefined
+                      }
                       onValueChange={(value) => {
                         handleUpdateSettings({
                           name: option.param,
