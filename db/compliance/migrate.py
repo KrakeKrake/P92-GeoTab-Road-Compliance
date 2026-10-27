@@ -19,6 +19,22 @@ MIGRATIONS = [
     "combined_seed.sql",
 ]
 CORE = {"combined_create_tables.sql", "combined_seed.sql"}
+
+# The schema and seed files were merged into two combined files. A database
+# migrated by the older list already has their contents; map the old versions
+# so the merged files are not applied a second time (the seeds use plain
+# INSERTs and would fail on the existing primary keys).
+LEGACY_VERSIONS = {
+    "combined_create_tables.sql": {
+        "create_table.sql",
+        "create_goods_tables.sql",
+    },
+    "combined_seed.sql": {
+        "hvnl_seed.sql",
+        "goods_seed.sql",
+    },
+}
+
 CONNECT_TIMEOUT = float(os.environ.get("DB_CONNECT_TIMEOUT", "120"))
 
 
@@ -82,6 +98,22 @@ def main():
             if had_tracking:
                 cur.execute("SELECT version FROM compliance.schema_migrations")
                 applied = {row[0] for row in cur.fetchall()}
+                # An existing install may still list the pre-merge file names.
+                # Record the merged names that those versions cover so the
+                # plain INSERT seeds are not replayed.
+                legacy_applied = {
+                    merged
+                    for merged, legacy in LEGACY_VERSIONS.items()
+                    if merged not in applied and legacy.issubset(applied)
+                }
+                if legacy_applied:
+                    cur.executemany(
+                        "INSERT INTO compliance.schema_migrations (version) VALUES (%s)"
+                        " ON CONFLICT DO NOTHING",
+                        [(name,) for name in legacy_applied],
+                    )
+                    applied |= legacy_applied
+                    conn.commit()
             elif table_exists(cur, "compliance.vehicle_profiles"):
                 # Database created by the older setup.sh: the core schema and
                 # seeds are present, but there is no migration history yet.
