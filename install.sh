@@ -104,6 +104,35 @@ if [[ "$_first" != *.* && "$_first" != *:* && "$_first" != localhost ]]; then
   IMAGE_REPO="docker.io/$IMAGE_REPO"
 fi
 
+docker_cli() {
+  if command -v docker >/dev/null 2>&1; then
+    printf '%s' docker
+  elif command -v podman >/dev/null 2>&1; then
+    printf '%s' podman
+  fi
+}
+
+# True when the active engine is a rootful Docker (or rootful Podman socket),
+# where container root writes host files as uid 0. `docker info` is the
+# canonical answer; the socket owner is the fallback for runtimes that do not
+# expose .Rootless.
+docker_rootful() {
+  command -v docker >/dev/null 2>&1 || return 1
+  local rootless endpoint socket
+  rootless="$(docker info --format '{{.Rootless}}' 2>/dev/null || true)"
+  case "$rootless" in
+    true) return 1 ;;
+    false) return 0 ;;
+  esac
+  endpoint="$(docker context inspect --format '{{.Endpoints.docker.Host}}' 2>/dev/null || true)"
+  [[ "$endpoint" == *"/run/user/"* ]] && return 1
+  socket="${endpoint#unix://}"
+  [[ -z "$socket" || "$socket" == "$endpoint" ]] && socket="/var/run/docker.sock"
+  [[ -S "$socket" ]] || return 1
+  [[ "$(stat -c %u "$socket" 2>/dev/null || echo 0)" == "$(id -u)" ]] && return 1
+  return 0
+}
+
 # Rootful Docker writes bind-mounted files as root, which makes the host-side
 # tile promotion fail. Match the invoking user there; rootless Podman/Docker
 # needs 0:0 (container root already maps to your user).
@@ -132,35 +161,6 @@ random_password() {
   local value
   value="$(head -c 32 /dev/urandom 2>/dev/null | base64 | tr -dc 'A-Za-z0-9' | head -c 24 || true)"
   printf '%s' "${value:-nhvr$(date +%s)}"
-}
-
-docker_cli() {
-  if command -v docker >/dev/null 2>&1; then
-    printf '%s' docker
-  elif command -v podman >/dev/null 2>&1; then
-    printf '%s' podman
-  fi
-}
-
-# True when the active engine is a rootful Docker (or rootful Podman socket),
-# where container root writes host files as uid 0. `docker info` is the
-# canonical answer; the socket owner is the fallback for runtimes that do not
-# expose .Rootless.
-docker_rootful() {
-  command -v docker >/dev/null 2>&1 || return 1
-  local rootless endpoint socket
-  rootless="$(docker info --format '{{.Rootless}}' 2>/dev/null || true)"
-  case "$rootless" in
-    true) return 1 ;;
-    false) return 0 ;;
-  esac
-  endpoint="$(docker context inspect --format '{{.Endpoints.docker.Host}}' 2>/dev/null || true)"
-  [[ "$endpoint" == *"/run/user/"* ]] && return 1
-  socket="${endpoint#unix://}"
-  [[ -z "$socket" || "$socket" == "$endpoint" ]] && socket="/var/run/docker.sock"
-  [[ -S "$socket" ]] || return 1
-  [[ "$(stat -c %u "$socket" 2>/dev/null || echo 0)" == "$(id -u)" ]] && return 1
-  return 0
 }
 
 volume_exists() {
