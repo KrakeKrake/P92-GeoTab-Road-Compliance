@@ -151,8 +151,7 @@ validate_inputs() {
   require_writable_dir "$STATE_DIR" "the update-state directory"
   # Rootful Docker writes bind-mounted files as root; the host-side promotion
   # then fails with permission denied. Warn before the long tile build.
-  if command -v docker >/dev/null 2>&1 \
-     && [[ "$(docker info --format '{{.Rootless}}' 2>/dev/null || true)" == "false" ]]; then
+  if docker_rootful; then
     if [[ "${PUID:-0}" == "0" || "${PGID:-0}" == "0" ]]; then
       warn "rootful Docker detected but PUID/PGID are 0; containers will write into custom_files as root, and the tile promotion will fail. Set PUID=$(id -u) and PGID=$(id -g) in .env, then run: sudo chown -R $(id -u):$(id -g) custom_files"
     elif [[ "${PUID:-0}" != "$(id -u)" || "${PGID:-0}" != "$(id -g)" ]]; then
