@@ -23,6 +23,27 @@ import { router } from '@/routes';
 const getActiveWaypoints = (waypoints: Waypoint[]): ActiveWaypoint[] =>
   waypoints.flatMap((wp) => wp.geocodeResults.filter((r) => r.selected));
 
+/**
+ * Return the first network that this route is known to traverse on a
+ * prohibited edge, or null when it is legal for all selected networks.
+ */
+function blockedNetworkForRoute(
+  route: ValhallaRouteResponse,
+  selectedNetworks: string[]
+): string | null {
+  for (const leg of route.trip.legs ?? []) {
+    for (const maneuver of leg.maneuvers ?? []) {
+      const blocked = maneuver.nhvr_networks?.find(
+        (network) =>
+          network.status === 'prohibited' &&
+          selectedNetworks.includes(network.name)
+      );
+      if (blocked) return blocked.name;
+    }
+  }
+  return null;
+}
+
 async function fetchDirections() {
   const waypoints = useDirectionsStore.getState().waypoints;
   const profile = router.state.location.search.profile;
@@ -96,22 +117,42 @@ async function fetchDirections() {
 
   const data: ValhallaRouteResponse = await routeResponse.json();
 
-  // Defence in depth: even if Valhalla returns a route, never display one that
-  // traverses an edge marked prohibited for a selected network.
+  // Defence in depth: if Valhalla returns an illegal main route, prefer a
+  // legal alternative instead of discarding the whole response. This also
+  // covers hierarchy shortcuts that were built before the tile-builder guard.
   if (Array.isArray(selectedNetworks) && selectedNetworks.length > 0) {
-    for (const leg of data.trip.legs ?? []) {
-      for (const maneuver of leg.maneuvers ?? []) {
-        const blocked = maneuver.nhvr_networks?.find(
-          (network) =>
-            network.status === 'prohibited' &&
-            selectedNetworks.includes(network.name)
+    const blocked = blockedNetworkForRoute(data, selectedNetworks);
+    const legalAlternates = (data.alternates ?? []).filter(
+      (alternate): alternate is ValhallaRouteResponse =>
+        Boolean(alternate) &&
+        blockedNetworkForRoute(alternate, selectedNetworks) === null
+    );
+
+    if (blocked) {
+      if (legalAlternates.length === 0) {
+        throw new Error(
+          `No route avoids the restricted sections of the selected NHVR network (${selectedNetworks.join(
+            ', '
+          )}). Change the network selection or the waypoints.`
         );
-        if (blocked) {
-          throw new Error(
-            `The returned route crosses a section that is prohibited for ${blocked.name}. Change the NHVR network or the waypoints.`
-          );
-        }
       }
+
+      // Promote the first (best) legal alternate to the main route.
+      const legal = legalAlternates[0] as ValhallaRouteResponse;
+      const rest = legalAlternates.slice(1);
+      data.trip = legal.trip;
+      data.alternates = rest.length > 0 ? rest : undefined;
+
+      toast.warning('Showing an alternative route', {
+        description: `The fastest route crossed a section prohibited for ${blocked}. Showing a route that avoids it.`,
+        position: 'bottom-center',
+        duration: 7000,
+        closeButton: true,
+      });
+    } else {
+      // Drop any illegal alternates so they cannot be selected from the list.
+      data.alternates =
+        legalAlternates.length > 0 ? legalAlternates : undefined;
     }
   }
 
