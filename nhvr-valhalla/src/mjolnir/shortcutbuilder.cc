@@ -226,6 +226,14 @@ bool CanContract(GraphReader& reader,
   if (!EdgesMatch(tile, edge1, edge2))
     return false;
 
+  // Shortcut edge info is created without tagged values, so a shortcut that
+  // spans an NHVR-tagged edge would lose its access status and could bypass a
+  // prohibited section at routing time. Do not contract across such an edge.
+  if (tile->edgeinfo(edge1).has_nhvr_networks() ||
+      tile->edgeinfo(edge2).has_nhvr_networks()) {
+    return false;
+  }
+
   // Exactly one pair of edges match. Check if any other remaining edges
   // are drivable outbound from the node. If so this cannot be contracted.
   // NOTE-this seems to cause issues on PA Tpke / Breezewood
@@ -398,6 +406,11 @@ std::pair<uint32_t, uint32_t> AddShortcutEdges(GraphReader& reader,
     // Skip transit connection edges.
     const DirectedEdge* directededge = tile->directededge(edge_id);
     if (!directededge->can_form_shortcut()) {
+      continue;
+    }
+    // A shortcut must not start on an NHVR-tagged edge: the shortcut's edge
+    // info would not carry the tag and could become a prohibited bypass.
+    if (tile->edgeinfo(directededge).has_nhvr_networks()) {
       continue;
     }
 

@@ -304,6 +304,13 @@ public:
 
   // Define the NHVR network entries for the edge.
   std::vector<NHVRNetworkEntry> nhvr_networks() const;
+
+  // Cheap presence check for the NHVR tag. Used when deciding whether an edge
+  // can be folded into a shortcut (shortcuts do not carry these tags).
+  bool has_nhvr_networks() const {
+    const auto& tags = GetTags();
+    return tags.find(TaggedValue::kNHVRNetwork) != tags.end();
+  }
   /**
    * Get levels of the edge.
    * @see https://wiki.openstreetmap.org/wiki/Key:level

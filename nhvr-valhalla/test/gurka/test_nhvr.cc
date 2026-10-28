@@ -120,6 +120,31 @@ TEST(NhvrTruck, AutoCostingIgnoresNhvr) {
   gurka::assert::raw::expect_path(res, {"AB", "BC", "CD"});
 }
 
+TEST(NhvrTruck, LongMotorwayRouteHonoursProhibitedEdge) {
+  // Long routes use the hierarchy. Verify a prohibited edge in the middle of
+  // a motorway chain still blocks the route.
+  const std::string ascii_map =
+      R"(A---B---C---D---E---F---G---H---I---J---K---L---M---N---O---P---Q---R---S---T)";
+  gurka::ways ways;
+  for (const auto& name : {"AB", "BC", "CD", "DE", "EF", "FG", "GH", "HI", "IJ", "JK", "KL",
+                           "LM", "MN", "NO", "OP", "PQ", "QR", "RS", "ST"}) {
+    ways[name] = {{"highway", "motorway"}};
+  }
+  ways["JK"] = {{"highway", "motorway"}, {"nhvr_networks", "NetA:2"}};
+
+  // ~100 km total, so the route uses the hierarchy rather than local edges.
+  const auto layout = gurka::detail::map_to_coordinates(ascii_map, 5000);
+  auto map = gurka::buildtiles(layout, ways, {}, {}, "test/data/nhvr_shortcut");
+
+  try {
+    gurka::do_action(Options::route, map, {"A", "T"}, "truck",
+                     {{"/costing_options/truck/nhvr_networks/0", "NetA"}});
+    FAIL() << "Expected the prohibited edge to block the route";
+  } catch (const valhalla_exception_t& err) {
+    EXPECT_EQ(err.code, 442);
+  }
+}
+
 TEST(NhvrSerialization, EdgeAttributePopulated) {
   auto map = build_linear_map("NetA:0|NetB:2", "test/data/nhvr_edge_attr");
   auto res = gurka::do_action(Options::route, map, {"A", "D"}, "truck",

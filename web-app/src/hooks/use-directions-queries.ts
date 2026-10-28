@@ -63,68 +63,57 @@ async function fetchDirections() {
     },
   });
 
-  let routeResponse = response;
+  const routeResponse = response;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const requestJson = valhallaRequest.json as any;
+  const selectedNetworks =
+    requestJson.costing_options?.[requestJson.costing]?.nhvr_networks;
 
   if (!routeResponse.ok) {
     const errorData = await routeResponse.json().catch(() => ({}));
-    // A selected NHVR network can make the route impossible (for example a
-    // bus-only network on a truck route). Retry without the network filter so
-    // the user still gets a route and can see the network markings.
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const requestJson = valhallaRequest.json as any;
-    const selectedNetworks =
-      requestJson.costing_options?.[requestJson.costing]?.nhvr_networks;
 
+    // A selected network is a hard constraint: restricted sections for that
+    // network must never be used. Do not retry without the network filter -
+    // that would silently route over the red (prohibited) sections.
     if (
       errorData.error_code === 442 &&
       Array.isArray(selectedNetworks) &&
       selectedNetworks.length > 0
     ) {
-      const fallbackJson = JSON.parse(JSON.stringify(requestJson));
-      if (fallbackJson.costing_options?.[fallbackJson.costing]) {
-        delete fallbackJson.costing_options[fallbackJson.costing].nhvr_networks;
-      }
-      delete fallbackJson.filters;
-
-      const fallbackParams = new URLSearchParams({
-        json: JSON.stringify(fallbackJson),
-      });
-      const fallbackResponse = await fetch(
-        `${getValhallaUrl()}/route?${fallbackParams}`,
-        {
-          headers: {
-            'Content-Type': 'application/json',
-            ...VALHALLA_CLIENT_HEADERS,
-          },
-        }
+      throw new Error(
+        `No route avoids the restricted sections of the selected NHVR network (${selectedNetworks.join(
+          ', '
+        )}). Change the network selection or the waypoints.`
       );
-
-      if (fallbackResponse.ok) {
-        toast.warning('No route with the selected NHVR network', {
-          description:
-            'Showing a route without the network restriction. Clear the selection or choose another network.',
-          position: 'bottom-center',
-          duration: 7000,
-          closeButton: true,
-        });
-        routeResponse = fallbackResponse;
-      } else {
-        let error_msg = errorData.error || 'Could not fetch resource';
-        if (errorData.error_code === 154) {
-          error_msg += ` for route.`;
-        }
-        throw new Error(error_msg);
-      }
-    } else {
-      let error_msg = errorData.error || 'Could not fetch resource';
-      if (errorData.error_code === 154) {
-        error_msg += ` for route.`;
-      }
-      throw new Error(error_msg);
     }
+
+    let error_msg = errorData.error || 'Could not fetch resource';
+    if (errorData.error_code === 154) {
+      error_msg += ` for route.`;
+    }
+    throw new Error(error_msg);
   }
 
   const data: ValhallaRouteResponse = await routeResponse.json();
+
+  // Defence in depth: even if Valhalla returns a route, never display one that
+  // traverses an edge marked prohibited for a selected network.
+  if (Array.isArray(selectedNetworks) && selectedNetworks.length > 0) {
+    for (const leg of data.trip.legs ?? []) {
+      for (const maneuver of leg.maneuvers ?? []) {
+        const blocked = maneuver.nhvr_networks?.find(
+          (network) =>
+            network.status === 'prohibited' &&
+            selectedNetworks.includes(network.name)
+        );
+        if (blocked) {
+          throw new Error(
+            `The returned route crosses a section that is prohibited for ${blocked.name}. Change the NHVR network or the waypoints.`
+          );
+        }
+      }
+    }
+  }
 
   // Parse geometry for main route
   (data as ParsedDirectionsGeometry).decodedGeometry =
