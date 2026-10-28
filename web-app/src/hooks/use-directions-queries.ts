@@ -66,25 +66,51 @@ async function fetchDirections() {
     language,
   });
 
-  // Map clicks (and some geocoder results) can be off-road. Give Loki enough
-  // room to snap to a truck-accessible edge; without it the truck profile
-  // returns "No path could be found" for otherwise routable points.
-  valhallaRequest.json.locations = valhallaRequest.json.locations.map(
-    (location) => ({ ...location, radius: 50 })
-  );
+  // Map clicks (and some geocoder results) can be off-road. Loki snaps each
+  // location to the nearest legal truck edge within this radius. 50 m was too
+  // tight when a destination sits next to a restricted road: the nearest legal
+  // edge can be just over 50 m away, making a legal detour look unreachable.
+  // Start at 100 m and retry with a larger radius if Valhalla finds no path.
+  const buildRouteUrl = (radius: number) => {
+    const json = {
+      ...valhallaRequest.json,
+      locations: valhallaRequest.json.locations.map((location) => ({
+        ...location,
+        radius,
+      })),
+    };
+    return `${getValhallaUrl()}/route?${new URLSearchParams({
+      json: JSON.stringify(json),
+    })}`;
+  };
 
-  const params = new URLSearchParams({
-    json: JSON.stringify(valhallaRequest.json),
-  });
+  const requestRoute = (radius: number) =>
+    fetch(buildRouteUrl(radius), {
+      headers: {
+        'Content-Type': 'application/json',
+        ...VALHALLA_CLIENT_HEADERS,
+      },
+    });
 
-  const response = await fetch(`${getValhallaUrl()}/route?${params}`, {
-    headers: {
-      'Content-Type': 'application/json',
-      ...VALHALLA_CLIENT_HEADERS,
-    },
-  });
-
-  const routeResponse = response;
+  let routeResponse = await requestRoute(100);
+  if (!routeResponse.ok) {
+    let errorData = await routeResponse
+      .clone()
+      .json()
+      .catch(() => ({}));
+    if (errorData.error_code === 442) {
+      for (const radius of [250, 500]) {
+        const retry = await requestRoute(radius);
+        routeResponse = retry;
+        if (retry.ok) break;
+        errorData = await retry
+          .clone()
+          .json()
+          .catch(() => ({}));
+        if (errorData.error_code !== 442) break;
+      }
+    }
+  }
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const requestJson = valhallaRequest.json as any;
   const selectedNetworks =
