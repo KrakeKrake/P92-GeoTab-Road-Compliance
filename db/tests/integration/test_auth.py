@@ -531,13 +531,12 @@ def test_login_correct_password(
         user_id=1,
         email="ben@example.com",
         username="ben",
-        password_hash=
-            generate_password_hash(
-                "Password123"
-            ),
+        password_hash=generate_password_hash(
+            "Password123"
+        ),
         licence_class_id="HR",
-        favourite_profile_id=
-            "STANDARD_HR_RIGID",
+        favourite_profile_id="STANDARD_HR_RIGID",
+        favourite_axle_config_id=None,
     )
 
     fake_db = FakeDB({
