@@ -89,6 +89,9 @@ services:
       build_time_zones: ${VALHALLA_BUILD_TIME_ZONES:-True}
       build_elevation: ${VALHALLA_BUILD_ELEVATION:-False}
       build_transit: ${VALHALLA_BUILD_TRANSIT:-False}
+      # The image's configure script uses `set -u` and reads this, but the
+      # custom image does not define a default. Empty means "no download URLs".
+      tile_urls: ${VALHALLA_TILE_URLS:-}
       LOGGING_LEVEL: ${VALHALLA_LOG_LEVEL:-INFO}
       server_threads: ${VALHALLA_SERVER_THREADS:-}
     user: "${PUID:-0}:${PGID:-0}"
@@ -113,6 +116,9 @@ services:
       build_time_zones: "False"
       build_elevation: "False"
       build_transit: "False"
+      # See valhalla-tiles: keeps the entrypoint from crashing on `set -u`
+      # when there are no tiles yet.
+      tile_urls: ${VALHALLA_TILE_URLS:-}
       LOGGING_LEVEL: ${VALHALLA_LOG_LEVEL:-INFO}
       server_threads: ${VALHALLA_SERVER_THREADS:-}
     user: "${PUID:-0}:${PGID:-0}"

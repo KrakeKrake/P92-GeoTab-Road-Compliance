@@ -351,8 +351,11 @@ Change `WEB_PORT` in `.env` (and `DB_DEBUG_PORT`, `API_DEBUG_PORT`,
 `docker compose up -d`.
 
 **The images cannot be pulled.**
-Set `IMAGE_REPO` and `IMAGE_TAG` to where the images were published, or use
-`--no-pull` if they are already on the host. All four images are tags in that
+If the repository is private, log in first (`podman login docker.io`, or
+`docker login`). `setup.sh` now falls back to images already on the host when a
+pull fails; `install.sh --no-pull` and `setup.sh --no-build` skip the pull
+entirely. Set `IMAGE_REPO` and `IMAGE_TAG` to where the images were published,
+or use `--no-pull` if they are already on the host. All four images are tags in that
 one repository (for example `docker.io/krakekrake/eat40005:valhalla-latest`),
 which is what Docker Hub supports. Keep the repository fully qualified
 (`docker.io/...`) so podman does not resolve a local short name to `localhost`.

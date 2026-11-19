@@ -111,7 +111,20 @@ if [[ $NO_BUILD -eq 0 ]]; then
     fi
   else
     log "pulling images"
-    compose pull
+    if ! compose pull; then
+      local_missing=0
+      for _svc in compliance-api web-app valhalla geotools; do
+        image_present "${IMAGE_REPO:?set IMAGE_REPO in .env}:${_svc}-${IMAGE_TAG:-latest}" \
+          || local_missing=1
+      done
+      if [[ $local_missing -eq 0 ]]; then
+        warn "image pull failed; continuing with the images already on this host"
+      else
+        die "could not pull images from ${IMAGE_REPO} and not all are present locally.
+Log in to the registry (podman login docker.io or docker login),
+make the repository public, or re-run with --no-build."
+      fi
+    fi
   fi
 fi
 
